@@ -28,10 +28,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow $(wastewise) to access your camera",
-          "microphonePermission": "Allow $(wastewise) to access your microphone",
-          "recordAudioAndroid": true,
-          "barcodeScannerEnabled": true
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera"
         }
       ]
     ],

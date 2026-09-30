@@ -1,20 +1,12 @@
 import "./global.css";
 
-import { CameraView, CameraType, useCameraPermissions } from "expo-camera";
-
+import { CameraView, type CameraType, useCameraPermissions } from "expo-camera";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useState } from "react";
-import {
-  Pressable,
-  Text,
-  View,
-  Button,
-  StyleSheet,
-  TouchableOpacity,
-} from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Image, Pressable, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-type Screen = "home" | "choose" | "analysing" | "result";
+type Screen = "home" | "camera" | "choose" | "analysing" | "result";
 
 const exampleItems = [
   {
@@ -37,40 +29,60 @@ const exampleItems = [
 
 type Item = (typeof exampleItems)[number];
 
+function Header() {
+  return (
+    <View className="flex-row items-center justify-between pt-3.5">
+      <View className="h-10 w-10 items-center justify-center rounded-[13px] bg-forest">
+        <Text className="text-[19px] font-extrabold text-canvas">W</Text>
+      </View>
+      <Text className="ml-2.5 mr-auto text-[19px] font-bold tracking-tight text-ink">
+        wastewise
+      </Text>
+      <View className="rounded-full bg-sage px-3 py-2">
+        <Text className="text-[11px] font-bold text-forest-soft">
+          Local guide
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>("home");
   const [item, setItem] = useState<Item>(exampleItems[0]);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [facing, setFacing] = useState<CameraType>("back");
   const [permission, requestPermission] = useCameraPermissions();
-
-  if (!permission) {
-    // Camera permissions are still loading.
-    return <View />;
-  }
-
-  if (!permission.granted) {
-    // Camera permissions are not granted yet.
-    return (
-      <View style={styles.container}>
-        <Text style={styles.message}>
-          We need your permission to show the camera
-        </Text>
-        <Button onPress={requestPermission} title="grant permission" />
-      </View>
-    );
-  }
-
-  function toggleCameraFacing() {
-    setFacing((current) => (current === "back" ? "front" : "back"));
-  }
+  const cameraRef = useRef<CameraView>(null);
 
   useEffect(() => {
     if (screen !== "analysing") return;
-    const timer = setTimeout(() => setScreen("result"), 1800);
+
+    const timer = setTimeout(() => setScreen("result"), 1500);
     return () => clearTimeout(timer);
   }, [screen]);
 
-  const chooseItem = (nextItem: Item) => {
+  const openCamera = async () => {
+    if (!permission?.granted) {
+      const result = await requestPermission();
+      if (!result.granted) return;
+    }
+
+    setPhotoUri(null);
+    setScreen("camera");
+  };
+
+  const capturePhoto = async () => {
+    const photo = await cameraRef.current?.takePictureAsync({ quality: 0.7 });
+    if (!photo) return;
+
+    setPhotoUri(photo.uri);
+    setItem(exampleItems[0]);
+    setScreen("analysing");
+  };
+
+  const chooseDemoItem = (nextItem: Item) => {
+    setPhotoUri(null);
     setItem(nextItem);
     setScreen("analysing");
   };
@@ -78,19 +90,8 @@ export default function App() {
   return (
     <SafeAreaView className="flex-1 bg-canvas px-6" edges={["top", "bottom"]}>
       <StatusBar style="dark" />
-      <View className="flex-row items-center justify-between pt-3.5">
-        <View className="h-10 w-10 items-center justify-center rounded-[13px] bg-forest">
-          <Text className="text-[19px] font-extrabold text-canvas">W</Text>
-        </View>
-        <Text className="ml-2.5 mr-auto text-[19px] font-bold tracking-tight text-ink">
-          wastewise
-        </Text>
-        <View className="rounded-full bg-sage px-3 py-2">
-          <Text className="text-[11px] font-bold text-forest-soft">
-            Local guide
-          </Text>
-        </View>
-      </View>
+      <Header />
+
       {screen === "home" && (
         <View className="flex-1">
           <View className="pt-[68px]">
@@ -101,14 +102,14 @@ export default function App() {
               </Text>
             </View>
             <Text className="mt-5 text-[43px] font-extrabold leading-[48px] tracking-[-1.8px] text-ink">
-              Not sure where{`\n`}it belongs?
+              Not sure where{"\n"}it belongs?
             </Text>
             <Text className="mt-[18px] max-w-[330px] text-base leading-6 text-copy">
               Scan everyday waste and get clear, practical guidance before it
               reaches the bin.
             </Text>
             <Pressable
-              onPress={() => setScreen("choose")}
+              onPress={openCamera}
               className="mt-[31px] flex-row items-center justify-center rounded-[18px] bg-ink py-[17px] active:opacity-85"
             >
               <Text className="mr-2 text-[25px] font-semibold leading-[25px] text-lime">
@@ -119,6 +120,7 @@ export default function App() {
               </Text>
             </Pressable>
           </View>
+
           <View className="mt-9 rounded-[22px] bg-card p-[22px]">
             <View className="flex-row items-center justify-between">
               <Text className="text-[10px] font-extrabold tracking-[1.3px] text-card-label">
@@ -133,33 +135,78 @@ export default function App() {
               Give food containers a quick rinse so they can be recycled
               properly.
             </Text>
-            <View className="mt-[21px] h-[5px] overflow-hidden rounded-full bg-card-track">
-              <View className="h-full w-[68%] rounded-full bg-card-progress" />
-            </View>
           </View>
-          <Text className="mt-7 pb-[18px] text-center text-xs font-semibold text-footer">
+          <Text className="mt-auto pb-[18px] text-center text-xs font-semibold text-footer">
             On-device guidance. Thoughtful choices.
           </Text>
+        </View>
+      )}
+
+      {screen === "camera" && (
+        <View className="flex-1 pt-5">
+          <View className="flex-row items-center justify-between pb-4">
+            <Text className="text-[11px] font-extrabold tracking-[1.4px] text-forest-muted">
+              SCAN AN ITEM
+            </Text>
+            <Pressable
+              onPress={() =>
+                setFacing((current) => (current === "back" ? "front" : "back"))
+              }
+            >
+              <Text className="text-sm font-bold text-forest">Flip camera</Text>
+            </Pressable>
+          </View>
+
+          <View className="flex-1 overflow-hidden rounded-[28px] bg-ink">
+            <CameraView ref={cameraRef} facing={facing} style={{ flex: 1 }} />
+            <View className="absolute inset-x-6 top-6 rounded-2xl bg-black/40 px-4 py-3">
+              <Text className="text-center text-sm font-semibold text-white">
+                Place one item clearly in the frame
+              </Text>
+            </View>
+          </View>
+
+          <View className="items-center py-5">
+            <Pressable
+              onPress={capturePhoto}
+              className="h-[72px] w-[72px] items-center justify-center rounded-full border-4 border-forest bg-white active:opacity-70"
+            >
+              <View className="h-[56px] w-[56px] rounded-full bg-forest" />
+            </Pressable>
+            <Text className="mt-2 text-sm font-bold text-forest">
+              Take photo
+            </Text>
+          </View>
+
+          <View className="mb-4 flex-row justify-between px-2">
+            <Pressable onPress={() => setScreen("choose")}>
+              <Text className="text-sm font-bold text-forest">
+                Use demo item
+              </Text>
+            </Pressable>
+            <Pressable onPress={() => setScreen("home")}>
+              <Text className="text-sm font-bold text-copy">Cancel</Text>
+            </Pressable>
+          </View>
         </View>
       )}
 
       {screen === "choose" && (
         <View className="flex-1 pt-12">
           <Text className="text-[11px] font-extrabold tracking-[1.4px] text-forest-muted">
-            DEMO SCAN
+            DEMO RESULTS
           </Text>
           <Text className="mt-4 text-[34px] font-extrabold leading-[39px] tracking-[-1.3px] text-ink">
-            Choose an item{`\n`}to scan
+            Choose a sample{`\n`}result
           </Text>
           <Text className="mt-3 text-base leading-6 text-copy">
-            For now, choose an example. We will replace this screen with the
-            real camera and photo picker later.
+            Use these while the image model is still being connected.
           </Text>
           <View className="mt-8 gap-3">
             {exampleItems.map((example) => (
               <Pressable
                 key={example.name}
-                onPress={() => chooseItem(example)}
+                onPress={() => chooseDemoItem(example)}
                 className="flex-row items-center rounded-[18px] border border-[#DFE4DE] bg-white p-5 active:bg-sage"
               >
                 <View>
@@ -167,7 +214,7 @@ export default function App() {
                     {example.name}
                   </Text>
                   <Text className="mt-1 text-sm text-copy">
-                    Tap to see a sample result
+                    Show sample recycling guidance
                   </Text>
                 </View>
                 <Text className="ml-auto text-xl text-forest">→</Text>
@@ -175,19 +222,28 @@ export default function App() {
             ))}
           </View>
           <Pressable
-            onPress={() => setScreen("home")}
+            onPress={openCamera}
             className="mt-auto mb-5 items-center py-4"
           >
-            <Text className="text-sm font-bold text-forest">Cancel</Text>
+            <Text className="text-sm font-bold text-forest">
+              Back to camera
+            </Text>
           </Pressable>
         </View>
       )}
 
       {screen === "analysing" && (
         <View className="flex-1 items-center justify-center pb-20">
-          <View className="h-24 w-24 items-center justify-center rounded-full bg-sage">
-            <Text className="text-[42px] text-forest">⌁</Text>
-          </View>
+          {photoUri ? (
+            <Image
+              source={{ uri: photoUri }}
+              className="h-28 w-28 rounded-[26px]"
+            />
+          ) : (
+            <View className="h-24 w-24 items-center justify-center rounded-full bg-sage">
+              <Text className="text-[42px] text-forest">⌁</Text>
+            </View>
+          )}
           <Text className="mt-8 text-[28px] font-extrabold tracking-tight text-ink">
             Checking your item
           </Text>
@@ -201,13 +257,19 @@ export default function App() {
       )}
 
       {screen === "result" && (
-        <View className="flex-1 pt-10">
+        <View className="flex-1 pt-8">
           <View className="self-start rounded-full bg-sage px-3 py-2">
             <Text className="text-[11px] font-extrabold tracking-[.8px] text-forest">
               RESULT READY
             </Text>
           </View>
-          <Text className="mt-7 text-[34px] font-extrabold leading-[39px] tracking-[-1.3px] text-ink">
+          {photoUri && (
+            <Image
+              source={{ uri: photoUri }}
+              className="mt-5 h-28 w-28 rounded-[26px]"
+            />
+          )}
+          <Text className="mt-6 text-[34px] font-extrabold leading-[39px] tracking-[-1.3px] text-ink">
             {item.category}
           </Text>
           <View className="mt-5 rounded-[20px] bg-white p-5">
@@ -220,12 +282,12 @@ export default function App() {
           </View>
           <View className="mt-4 rounded-[18px] bg-[#FFF0E6] p-4">
             <Text className="text-sm leading-5 text-ink">
-              This is a demo result. Later, the model will decide the category
-              from your photo.
+              This is a demo result. The image model will choose the final
+              category later.
             </Text>
           </View>
           <Pressable
-            onPress={() => setScreen("choose")}
+            onPress={openCamera}
             className="mt-auto mb-4 items-center justify-center rounded-[18px] bg-ink py-[17px] active:opacity-85"
           >
             <Text className="text-base font-extrabold text-white">
@@ -240,45 +302,6 @@ export default function App() {
           </Pressable>
         </View>
       )}
-      <View style={styles.container}>
-        <CameraView style={styles.camera} facing={facing} />
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity style={styles.button} onPress={toggleCameraFacing}>
-            <Text style={styles.text}>Flip Camera</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: "center",
-  },
-  message: {
-    textAlign: "center",
-    paddingBottom: 10,
-  },
-  camera: {
-    flex: 1,
-  },
-  buttonContainer: {
-    position: "absolute",
-    bottom: 64,
-    flexDirection: "row",
-    backgroundColor: "transparent",
-    width: "100%",
-    paddingHorizontal: 64,
-  },
-  button: {
-    flex: 1,
-    alignItems: "center",
-  },
-  text: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "white",
-  },
-});
