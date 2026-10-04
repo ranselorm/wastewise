@@ -5,9 +5,12 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Header from "./components/Header";
 
 type Screen = "home" | "camera" | "choose" | "analysing" | "result";
 
+// Temporary app data. Each item will move to the team-owned data files before
+// we connect the on-device image classifier.
 const exampleItems = [
   {
     name: "Plastic bottle",
@@ -29,27 +32,11 @@ const exampleItems = [
 
 type Item = (typeof exampleItems)[number];
 
-function Header() {
-  return (
-    <View className="flex-row items-center justify-between pt-3.5">
-      <View className="h-10 w-10 items-center justify-center rounded-[13px] bg-forest">
-        <Text className="text-[19px] font-extrabold text-canvas">W</Text>
-      </View>
-      <Text className="ml-2.5 mr-auto text-[19px] font-bold tracking-tight text-ink">
-        wastewise
-      </Text>
-      <View className="rounded-full bg-sage px-3 py-2">
-        <Text className="text-[11px] font-bold text-forest-soft">
-          Local guide
-        </Text>
-      </View>
-    </View>
-  );
-}
-
 export default function App() {
   const [screen, setScreen] = useState<Screen>("home");
   const [item, setItem] = useState<Item>(exampleItems[0]);
+
+  // A local URI returned by the device camera after a user takes a photo.
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [facing, setFacing] = useState<CameraType>("back");
   const [permission, requestPermission] = useCameraPermissions();
@@ -58,11 +45,14 @@ export default function App() {
   useEffect(() => {
     if (screen !== "analysing") return;
 
+    // This represents model processing for now. ExecuTorch will replace this
+    // delay with a real on-device classification request.
     const timer = setTimeout(() => setScreen("result"), 1500);
     return () => clearTimeout(timer);
   }, [screen]);
 
   const openCamera = async () => {
+    // Ask only when someone chooses to scan, rather than on app launch.
     if (!permission?.granted) {
       const result = await requestPermission();
       if (!result.granted) return;
@@ -77,6 +67,8 @@ export default function App() {
     if (!photo) return;
 
     setPhotoUri(photo.uri);
+    // The image is captured for real, but its classification remains mocked
+    // until the ExecuTorch model is integrated.
     setItem(exampleItems[0]);
     setScreen("analysing");
   };
@@ -158,6 +150,7 @@ export default function App() {
           </View>
 
           <View className="flex-1 overflow-hidden rounded-[28px] bg-ink">
+            {/* The real device camera preview. */}
             <CameraView ref={cameraRef} facing={facing} style={{ flex: 1 }} />
             <View className="absolute inset-x-6 top-6 rounded-2xl bg-black/40 px-4 py-3">
               <Text className="text-center text-sm font-semibold text-white">
