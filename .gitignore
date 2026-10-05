@@ -39,3 +39,9 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Local machine-learning data, environments, and exported model experiments
+/ml/.venv/
+/ml/data/
+/ml/models/
+/ml/reports/
