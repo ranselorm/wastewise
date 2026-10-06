@@ -135,12 +135,10 @@ export default function App() {
       } catch (error) {
         console.error("Classification failed:", error);
 
-        if (!stillOnThisScreen) return;
+        const details = error instanceof Error ? error.message : String(error);
 
-        Alert.alert(
-          "Could not analyse this photo",
-          "Please try a clearer image or take another photo.",
-        );
+        Alert.alert("Could not analyse this photo", details);
+
         setScreen("preview");
       }
     };
