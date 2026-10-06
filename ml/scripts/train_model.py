@@ -1,8 +1,4 @@
-"""Train Wastewise's eight-category image classifier.
-
-This uses transfer learning: MobileNetV3-Small starts with general image
-knowledge, then learns Wastewise's eight waste categories from our images.
-"""
+"""Train Wastewise's eight-category MobileNetV3-Small classifier."""
 
 from pathlib import Path
 import json
@@ -14,43 +10,38 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, models, transforms
 
 
-# ----- Project settings ----------------------------------------------------
+# Folders created by the earlier preparation scripts.
+DATA_ROOT = Path("ml/data/splits")
+MODEL_ROOT = Path("ml/models")
 
-# The dataset created by split_dataset.py.
-DATA_FOLDER = Path("ml/data/splits")
+# Files created after training.
+MODEL_PATH = MODEL_ROOT / "wastewise_mobilenet_v3_small.pt"
+CLASSES_PATH = MODEL_ROOT / "wastewise_classes.json"
+HISTORY_PATH = MODEL_ROOT / "training_history.json"
 
-# Where the trained model and its category order will be saved.
-MODEL_FOLDER = Path("ml/models")
-MODEL_FILE = MODEL_FOLDER / "wastewise_mobilenet_v3_small.pt"
-CLASSES_FILE = MODEL_FOLDER / "wastewise_classes.json"
-
-# A fixed seed makes the order of training examples repeatable.
-RANDOM_SEED = 42
-
-# Keep this small for the first training run on an M1 Mac.
+# First-run training settings.
+SEED = 42
 BATCH_SIZE = 32
 EPOCHS = 8
 LEARNING_RATE = 0.001
 
 
-def choose_device() -> torch.device:
-    """Use the M1 GPU when PyTorch's MPS support is available."""
+def get_device() -> torch.device:
+    """Use the M1 GPU when available; otherwise use the CPU."""
     if torch.backends.mps.is_available():
         return torch.device("mps")
     return torch.device("cpu")
 
 
-def make_data_loaders() -> tuple[DataLoader, DataLoader, DataLoader, list[str]]:
-    """Load train, validation, and test images from their folder structure."""
-    # MobileNet was pretrained on ImageNet images. These values prepare our
-    # images in the same numerical format that it expects.
+def make_loaders() -> tuple[DataLoader, DataLoader, DataLoader, list[str]]:
+    """Load train, validation, and test images from their category folders."""
+    # These values match the pretrained MobileNet model's expected input format.
     normalise = transforms.Normalize(
         mean=[0.485, 0.456, 0.406],
         std=[0.229, 0.224, 0.225],
     )
 
-    # Training images get gentle variation. This helps the model handle a
-    # different angle or left/right orientation in a real phone photo.
+    # Gentle variation helps the model handle normal phone-photo differences.
     train_transform = transforms.Compose(
         [
             transforms.Resize(256),
@@ -61,8 +52,7 @@ def make_data_loaders() -> tuple[DataLoader, DataLoader, DataLoader, list[str]]:
         ]
     )
 
-    # Validation and test images stay consistent. We use them to measure the
-    # model fairly, not to create extra training variation.
+    # Validation and test images stay predictable for fair measurement.
     evaluation_transform = transforms.Compose(
         [
             transforms.Resize(256),
@@ -72,130 +62,157 @@ def make_data_loaders() -> tuple[DataLoader, DataLoader, DataLoader, list[str]]:
         ]
     )
 
-    train_data = datasets.ImageFolder(DATA_FOLDER / "train", train_transform)
-    validation_data = datasets.ImageFolder(
-        DATA_FOLDER / "val", evaluation_transform
+    train_data = datasets.ImageFolder(DATA_ROOT / "train", train_transform)
+    val_data = datasets.ImageFolder(DATA_ROOT / "val", evaluation_transform)
+    test_data = datasets.ImageFolder(DATA_ROOT / "test", evaluation_transform)
+
+    # Every split must use exactly the same category order.
+    if train_data.classes != val_data.classes or train_data.classes != test_data.classes:
+        raise ValueError("The category folders do not match across the three splits.")
+
+    train_loader = DataLoader(
+        train_data,
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+        num_workers=0,
     )
-    test_data = datasets.ImageFolder(DATA_FOLDER / "test", evaluation_transform)
-
-    # ImageFolder assigns a number to each folder name. All three sets must
-    # use exactly the same category order or their labels would be wrong.
-    if train_data.classes != validation_data.classes or train_data.classes != test_data.classes:
-        raise ValueError("Train, validation, and test category folders do not match.")
-
-    # num_workers=0 is deliberate: it is the simplest reliable starting point
-    # on macOS. We can tune it later only if we need more speed.
-    train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
-    validation_loader = DataLoader(
-        validation_data, batch_size=BATCH_SIZE, shuffle=False, num_workers=0
+    val_loader = DataLoader(
+        val_data,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+        num_workers=0,
     )
-    test_loader = DataLoader(test_data, batch_size=BATCH_SIZE, shuffle=False, num_workers=0)
+    test_loader = DataLoader(
+        test_data,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+        num_workers=0,
+    )
 
-    return train_loader, validation_loader, test_loader, train_data.classes
+    return train_loader, val_loader, test_loader, train_data.classes
 
 
-def measure_accuracy(
-    model: nn.Module, data_loader: DataLoader, device: torch.device
+def get_accuracy(
+    model: nn.Module,
+    loader: DataLoader,
+    device: torch.device,
 ) -> float:
-    """Return the percentage of images the current model classifies correctly."""
-    model.eval()  # Evaluation mode: no learning or training-only behaviour.
-    correct_predictions = 0
-    total_images = 0
+    """Measure how many images the model classifies correctly."""
+    model.eval()
 
-    # We are measuring only, so PyTorch does not need to calculate gradients.
+    correct = 0
+    total = 0
+
     with torch.no_grad():
-        for images, labels in data_loader:
+        for images, labels in loader:
             images = images.to(device)
             labels = labels.to(device)
 
             scores = model(images)
-            predicted_labels = scores.argmax(dim=1)
+            predictions = scores.argmax(dim=1)
 
-            correct_predictions += (predicted_labels == labels).sum().item()
-            total_images += labels.size(0)
+            correct += (predictions == labels).sum().item()
+            total += labels.size(0)
 
-    return correct_predictions / total_images
+    return correct / total
 
 
 def main() -> None:
-    random.seed(RANDOM_SEED)
-    torch.manual_seed(RANDOM_SEED)
+    random.seed(SEED)
+    torch.manual_seed(SEED)
 
-    device = choose_device()
+    device = get_device()
     print(f"Training device: {device}")
 
-    train_loader, validation_loader, test_loader, class_names = make_data_loaders()
+    train_loader, val_loader, test_loader, class_names = make_loaders()
+
     print(f"Categories: {class_names}")
     print(f"Training images: {len(train_loader.dataset)}")
-    print(f"Validation images: {len(validation_loader.dataset)}")
+    print(f"Validation images: {len(val_loader.dataset)}")
     print(f"Test images: {len(test_loader.dataset)}")
 
-    # DEFAULT downloads MobileNetV3-Small's pretrained weights the first time.
+    # Downloads pretrained MobileNetV3-Small weights automatically on first run.
     weights = models.MobileNet_V3_Small_Weights.DEFAULT
     model = models.mobilenet_v3_small(weights=weights)
 
-    # MobileNet's final layer originally predicted 1,000 ImageNet categories.
-    # Replace it with a new layer that predicts our eight Wastewise categories.
-    final_layer = model.classifier[3]
-    model.classifier[3] = nn.Linear(final_layer.in_features, len(class_names))
+    # Replace MobileNet's original 1,000-category final layer with our 8 classes.
+    old_final_layer = model.classifier[3]
+    model.classifier[3] = nn.Linear(
+        old_final_layer.in_features,
+        len(class_names),
+    )
     model = model.to(device)
 
-    # CrossEntropyLoss rewards the correct category being given the highest score.
     loss_function = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
-    MODEL_FOLDER.mkdir(parents=True, exist_ok=True)
-    best_validation_accuracy = 0.0
+    MODEL_ROOT.mkdir(parents=True, exist_ok=True)
+
+    best_val_accuracy = -1.0
+    history = []
 
     for epoch in range(EPOCHS):
-        model.train()  # Training mode: weights can now be updated.
-        running_loss = 0.0
-        correct_predictions = 0
-        total_images = 0
+        model.train()
+
+        total_loss = 0.0
+        correct = 0
+        total = 0
 
         for images, labels in train_loader:
             images = images.to(device)
             labels = labels.to(device)
 
-            # Clear old gradients, make predictions, measure the error,
-            # then adjust the model weights to reduce that error.
+            # Learn from one batch of images.
             optimizer.zero_grad()
             scores = model(images)
             loss = loss_function(scores, labels)
             loss.backward()
             optimizer.step()
 
-            running_loss += loss.item() * labels.size(0)
-            predicted_labels = scores.argmax(dim=1)
-            correct_predictions += (predicted_labels == labels).sum().item()
-            total_images += labels.size(0)
+            total_loss += loss.item() * labels.size(0)
+            predictions = scores.argmax(dim=1)
+            correct += (predictions == labels).sum().item()
+            total += labels.size(0)
 
-        training_loss = running_loss / total_images
-        training_accuracy = correct_predictions / total_images
-        validation_accuracy = measure_accuracy(model, validation_loader, device)
+        train_loss = total_loss / total
+        train_accuracy = correct / total
+        val_accuracy = get_accuracy(model, val_loader, device)
+
+        epoch_result = {
+            "epoch": epoch + 1,
+            "train_loss": train_loss,
+            "train_accuracy": train_accuracy,
+            "validation_accuracy": val_accuracy,
+        }
+        history.append(epoch_result)
 
         print(
             f"Epoch {epoch + 1}/{EPOCHS} | "
-            f"loss: {training_loss:.4f} | "
-            f"train accuracy: {training_accuracy:.1%} | "
-            f"validation accuracy: {validation_accuracy:.1%}"
+            f"loss: {train_loss:.4f} | "
+            f"train: {train_accuracy:.1%} | "
+            f"validation: {val_accuracy:.1%}"
         )
 
-        # Keep the version that works best on unseen validation images.
-        if validation_accuracy > best_validation_accuracy:
-            best_validation_accuracy = validation_accuracy
-            torch.save(model.state_dict(), MODEL_FILE)
-            CLASSES_FILE.write_text(json.dumps(class_names, indent=2) + "\n")
-            print("Saved this as the best model so far.")
+        # Save only the model that performs best on unseen validation images.
+        if val_accuracy > best_val_accuracy:
+            best_val_accuracy = val_accuracy
+            torch.save(model.state_dict(), MODEL_PATH)
+            CLASSES_PATH.write_text(json.dumps(class_names, indent=2) + "\n")
+            print("Saved best model so far.")
 
-    # Load the best saved version, then use the untouched test set once.
-    model.load_state_dict(torch.load(MODEL_FILE, map_location=device))
-    test_accuracy = measure_accuracy(model, test_loader, device)
+    HISTORY_PATH.write_text(json.dumps(history, indent=2) + "\n")
 
-    print(f"\nBest validation accuracy: {best_validation_accuracy:.1%}")
+    # Use the untouched test set only after training is complete.
+    model.load_state_dict(
+        torch.load(MODEL_PATH, map_location=device, weights_only=True)
+    )
+    test_accuracy = get_accuracy(model, test_loader, device)
+
+    print(f"\nBest validation accuracy: {best_val_accuracy:.1%}")
     print(f"Final test accuracy: {test_accuracy:.1%}")
-    print(f"Model saved to: {MODEL_FILE}")
-    print(f"Category order saved to: {CLASSES_FILE}")
+    print(f"Model: {MODEL_PATH}")
+    print(f"Categories: {CLASSES_PATH}")
+    print(f"History: {HISTORY_PATH}")
 
 
 if __name__ == "__main__":

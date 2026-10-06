@@ -9,13 +9,75 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "./components/Header";
 import * as ImagePicker from "expo-image-picker";
 
+import {
+  classifyImage,
+  type WasteCategory,
+} from "./services/wastewiseClassifier.ts";
+
 type Screen =
   "home" | "guide" | "camera" | "choose" | "preview" | "analysing" | "result";
 type ImageSource = "camera" | "gallery" | null;
 
-// Temporary app data. Each item will move to the team-owned data files before
-// we connect the on-device image classifier.
-const exampleItems = [
+type Item = {
+  name: string;
+  category: string;
+  action: string;
+};
+
+const MIN_CONFIDENCE = 0.6;
+
+const guidanceByCategory: Record<WasteCategory, Item> = {
+  battery: {
+    name: "Battery",
+    category: "Battery collection",
+    action:
+      "Keep batteries out of ordinary recycling. Take them to a battery collection point.",
+  },
+  general_waste: {
+    name: "General waste",
+    category: "General waste",
+    action:
+      "Place this in general waste if it cannot be reused or accepted by your local recycling service.",
+  },
+  glass: {
+    name: "Glass",
+    category: "Glass recycling",
+    action:
+      "Empty and rinse the glass item, then follow your local glass recycling guidance.",
+  },
+  metal: {
+    name: "Metal",
+    category: "Metal recycling",
+    action:
+      "Empty the item and place it in metal recycling where your local service accepts it.",
+  },
+  organic_waste: {
+    name: "Organic waste",
+    category: "Food and organic waste",
+    action:
+      "Place food scraps and other compostable organic material in the appropriate food-waste collection.",
+  },
+  paper_cardboard: {
+    name: "Paper and cardboard",
+    category: "Paper and cardboard",
+    action:
+      "Keep it clean and dry, flatten it if possible, then place it in paper and cardboard recycling.",
+  },
+  plastic: {
+    name: "Plastic",
+    category: "Plastic recycling",
+    action:
+      "Empty and rinse the item, then check whether your local service accepts that type of plastic.",
+  },
+  textile: {
+    name: "Textile",
+    category: "Textile reuse or recycling",
+    action:
+      "If clean and usable, donate it. Otherwise, check for a local textile recycling point.",
+  },
+};
+
+const exampleItems: Item[] = [
   {
     name: "Plastic bottle",
     category: "Plastic recycling",
@@ -32,9 +94,7 @@ const exampleItems = [
     action:
       "Do not put it in household recycling. Take it to a battery collection point.",
   },
-] as const;
-
-type Item = (typeof exampleItems)[number];
+];
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>("home");
@@ -49,15 +109,48 @@ export default function App() {
   const [facing, setFacing] = useState<CameraType>("back");
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
+  const [confidence, setConfidence] = useState<number | null>(null);
 
   useEffect(() => {
     if (screen !== "analysing") return;
 
-    // This represents model processing for now. ExecuTorch will replace this
-    // delay with a real on-device classification request.
-    const timer = setTimeout(() => setScreen("result"), 1500);
-    return () => clearTimeout(timer);
-  }, [screen]);
+    // Demo results do not have a real photo, so keep their short delay.
+    if (!photoUri) {
+      const timer = setTimeout(() => setScreen("result"), 500);
+      return () => clearTimeout(timer);
+    }
+
+    let stillOnThisScreen = true;
+
+    const analysePhoto = async () => {
+      try {
+        // Calls the Android Kotlin module, which runs ExecuTorch locally.
+        const classification = await classifyImage(photoUri);
+
+        if (!stillOnThisScreen) return;
+
+        setItem(guidanceByCategory[classification.category]);
+        setConfidence(classification.confidence);
+        setScreen("result");
+      } catch (error) {
+        console.error("Classification failed:", error);
+
+        if (!stillOnThisScreen) return;
+
+        Alert.alert(
+          "Could not analyse this photo",
+          "Please try a clearer image or take another photo.",
+        );
+        setScreen("preview");
+      }
+    };
+
+    void analysePhoto();
+
+    return () => {
+      stillOnThisScreen = false;
+    };
+  }, [screen, photoUri]);
 
   const openCamera = async () => {
     // Ask only when someone chooses to scan, rather than on app launch.
@@ -80,6 +173,7 @@ export default function App() {
     // The image is captured for real, but its classification remains mocked
     // until the ExecuTorch model is integrated.
     setItem(exampleItems[0]);
+    setConfidence(null);
     setScreen("preview");
   };
 
@@ -112,6 +206,7 @@ export default function App() {
     setPhotoUri(result.assets[0].uri);
     setImageSource("gallery");
     setItem(exampleItems[0]); // Temporary mock classification
+    setConfidence(null);
     setScreen("preview");
   };
 
@@ -127,6 +222,8 @@ export default function App() {
     setScreenBeforeGuide(screen);
     setScreen("guide");
   };
+
+  const isLowConfidence = confidence !== null && confidence < MIN_CONFIDENCE;
 
   return (
     <SafeAreaView className="flex-1 bg-canvas px-6" edges={["top", "bottom"]}>
@@ -485,29 +582,40 @@ export default function App() {
             />
           )}
           <Text className="mt-6 text-[34px] font-extrabold leading-[39px] tracking-[-1.3px] text-ink">
-            {item.category}
+            {isLowConfidence ? "We are not sure" : item.category}
           </Text>
-          <View className="mt-5 rounded-[20px] bg-white p-5">
-            <Text className="text-[10px] font-extrabold tracking-[1.2px] text-forest-muted">
-              WHAT TO DO
+
+          {confidence !== null && (
+            <Text className="mt-3 text-sm font-bold text-forest-muted">
+              Best match: {item.name} · {Math.round(confidence * 100)}%
+              confidence
             </Text>
-            <Text className="mt-3 text-base font-semibold leading-6 text-ink">
-              {item.action}
-            </Text>
-          </View>
-          <View className="mt-4 rounded-[18px] bg-[#FFF0E6] p-4">
-            <Text className="text-sm leading-5 text-ink">
-              This is a demo result. The image model will choose the final
-              category later.
-            </Text>
-          </View>
+          )}
+          {isLowConfidence ? (
+            <View className="mt-4 rounded-[18px] bg-[#FFF0E6] p-4">
+              <Text className="text-sm leading-5 text-ink">
+                This photo was not clear enough for a confident answer. Try
+                taking another photo with one item, good light, and a simple
+                background.
+              </Text>
+            </View>
+          ) : (
+            <View className="mt-5 rounded-[20px] bg-white p-5">
+              <Text className="text-[10px] font-extrabold tracking-[1.2px] text-forest-muted">
+                WHAT TO DO
+              </Text>
+              <Text className="mt-3 text-base font-semibold leading-6 text-ink">
+                {item.action}
+              </Text>
+            </View>
+          )}
           <Pressable
             onPress={openCamera}
             className="mt-auto mb-4 flex-row items-center justify-center rounded-[18px] bg-ink py-[17px] active:opacity-85"
           >
             <Feather name="camera" size={20} color="#B7D9A8" />
             <Text className="text-base font-extrabold text-white">
-              {"  Scan another item"}
+              {isLowConfidence ? "  Retake photo" : "  Scan another item"}
             </Text>
           </Pressable>
           <Pressable
