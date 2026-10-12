@@ -4,7 +4,15 @@ import Feather from "@expo/vector-icons/Feather";
 import { CameraView, type CameraType, useCameraPermissions } from "expo-camera";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
-import { Alert, Image, Pressable, Text, View } from "react-native";
+import {
+  Alert,
+  Animated,
+  Easing,
+  Image,
+  Pressable,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "./components/Header";
 import * as ImagePicker from "expo-image-picker";
@@ -25,6 +33,13 @@ type Item = {
 };
 
 const MIN_CONFIDENCE = 0.6;
+const MIN_ANALYSIS_TIME_MS = 1_500;
+
+const processingMessages = [
+  "Getting your photo ready",
+  "Looking for useful details",
+  "Matching it with waste types",
+] as const;
 
 const guidanceByCategory: Record<WasteCategory, Item> = {
   battery: {
@@ -110,22 +125,73 @@ export default function App() {
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
   const [confidence, setConfidence] = useState<number | null>(null);
+  const [processingStep, setProcessingStep] = useState(0);
+  const processingPulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (screen !== "analysing") return;
+
+    setProcessingStep(0);
+
+    const messageTimer = setInterval(() => {
+      setProcessingStep((current) =>
+        current === processingMessages.length - 1 ? 0 : current + 1,
+      );
+    }, 700);
+
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(processingPulse, {
+          toValue: 1,
+          duration: 700,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(processingPulse, {
+          toValue: 0,
+          duration: 700,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    pulse.start();
+
+    return () => {
+      clearInterval(messageTimer);
+      pulse.stop();
+      processingPulse.setValue(0);
+    };
+  }, [processingPulse, screen]);
 
   useEffect(() => {
     if (screen !== "analysing") return;
 
     // Demo results do not have a real photo, so keep their short delay.
     if (!photoUri) {
-      const timer = setTimeout(() => setScreen("result"), 500);
+      const timer = setTimeout(() => setScreen("result"), MIN_ANALYSIS_TIME_MS);
       return () => clearTimeout(timer);
     }
 
     let stillOnThisScreen = true;
+    const analysisStartedAt = Date.now();
 
     const analysePhoto = async () => {
       try {
         // Calls the Android Kotlin module, which runs ExecuTorch locally.
         const classification = await classifyImage(photoUri);
+
+        // On-device inference can be very fast. Keep the friendly processing
+        // state visible long enough for the user to understand what happened.
+        const elapsedTime = Date.now() - analysisStartedAt;
+        const remainingTime = Math.max(0, MIN_ANALYSIS_TIME_MS - elapsedTime);
+
+        if (remainingTime > 0) {
+          await new Promise<void>((resolve) => {
+            setTimeout(resolve, remainingTime);
+          });
+        }
 
         if (!stillOnThisScreen) return;
 
@@ -551,14 +617,49 @@ export default function App() {
               <Feather name="search" size={38} color="#244A3C" />
             </View>
           )}
-          <Text className="mt-8 text-[28px] font-extrabold tracking-tight text-ink">
-            Checking your item
+
+          <Animated.View
+            className="mt-7 h-16 w-16 items-center justify-center rounded-full bg-sage"
+            style={{
+              opacity: processingPulse.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.65, 1],
+              }),
+              transform: [
+                {
+                  scale: processingPulse.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.92, 1.08],
+                  }),
+                },
+              ],
+            }}
+          >
+            <Text className="text-[30px]">🌿</Text>
+          </Animated.View>
+
+          <Text className="mt-6 text-[11px] font-extrabold tracking-[1.4px] text-forest-muted">
+            ON-DEVICE ANALYSIS
           </Text>
-          <Text className="mt-3 max-w-[250px] text-center text-base leading-6 text-copy">
-            Looking at the image and finding the best disposal advice.
+          <Text className="mt-3 text-[28px] font-extrabold tracking-tight text-ink">
+            Hang tight
           </Text>
-          <View className="mt-9 h-2 w-48 overflow-hidden rounded-full bg-[#DDE5DC]">
-            <View className="h-full w-2/3 rounded-full bg-forest" />
+          <Text className="mt-3 max-w-[270px] text-center text-base leading-6 text-copy">
+            {processingMessages[processingStep]}
+          </Text>
+          <Text className="mt-2 max-w-[270px] text-center text-sm leading-5 text-footer">
+            Your photo stays on this phone.
+          </Text>
+
+          <View className="mt-9 flex-row gap-2">
+            {processingMessages.map((message, index) => (
+              <View
+                key={message}
+                className={`h-2 rounded-full ${
+                  index === processingStep ? "w-10 bg-forest" : "w-2 bg-[#DDE5DC]"
+                }`}
+              />
+            ))}
           </View>
         </View>
       )}
