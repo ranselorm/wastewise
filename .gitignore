@@ -45,3 +45,21 @@ yarn-error.*
 /ml/data/
 /ml/models/
 /ml/reports/
+
+
+/server/.env
+/server/node_modules/
+
+# Discarded Llama training/export experiments (keep only the mobile runtime asset)
+/Wastewise_FINAL_Colab_bundle.zip
+/ml/llama/.venv/
+/ml/llama/export-env/
+/ml/llama/dataset/
+/ml/llama/training/
+/ml/llama/exported-8w/
+/ml/llama/source/.cache/
+/ml/llama/source/original/
+/ml/llama/source/model.safetensors
+/ml/llama/exported/model.pte
+/android/app/src/main/assets/wastewise_llama_1b.pte
+/android/app/src/main/assets/wastewise_tokenizer.model

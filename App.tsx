@@ -21,6 +21,13 @@ import {
   classifyImage,
   type WasteCategory,
 } from "./services/wastewiseClassifier.ts";
+import {
+  guidanceForClassification,
+  MIN_CONFIDENCE,
+  RETAKE_MESSAGE,
+  type DisposalGuidance,
+} from "./services/disposalPolicy";
+import { explainVerifiedFacts } from "./services/wastewiseLlama";
 
 type Screen =
   "home" | "guide" | "camera" | "choose" | "preview" | "analysing" | "result";
@@ -31,8 +38,6 @@ type Item = {
   category: string;
   action: string;
 };
-
-const MIN_CONFIDENCE = 0.6;
 const MIN_ANALYSIS_TIME_MS = 1_500;
 
 const processingMessages = [
@@ -40,57 +45,6 @@ const processingMessages = [
   "Looking for useful details",
   "Matching it with waste types",
 ] as const;
-
-const guidanceByCategory: Record<WasteCategory, Item> = {
-  battery: {
-    name: "Battery",
-    category: "Battery collection",
-    action:
-      "Keep batteries out of ordinary recycling. Take them to a battery collection point.",
-  },
-  general_waste: {
-    name: "General waste",
-    category: "General waste",
-    action:
-      "Place this in general waste if it cannot be reused or accepted by your local recycling service.",
-  },
-  glass: {
-    name: "Glass",
-    category: "Glass recycling",
-    action:
-      "Empty and rinse the glass item, then follow your local glass recycling guidance.",
-  },
-  metal: {
-    name: "Metal",
-    category: "Metal recycling",
-    action:
-      "Empty the item and place it in metal recycling where your local service accepts it.",
-  },
-  organic_waste: {
-    name: "Organic waste",
-    category: "Food and organic waste",
-    action:
-      "Place food scraps and other compostable organic material in the appropriate food-waste collection.",
-  },
-  paper_cardboard: {
-    name: "Paper and cardboard",
-    category: "Paper and cardboard",
-    action:
-      "Keep it clean and dry, flatten it if possible, then place it in paper and cardboard recycling.",
-  },
-  plastic: {
-    name: "Plastic",
-    category: "Plastic recycling",
-    action:
-      "Empty and rinse the item, then check whether your local service accepts that type of plastic.",
-  },
-  textile: {
-    name: "Textile",
-    category: "Textile reuse or recycling",
-    action:
-      "If clean and usable, donate it. Otherwise, check for a local textile recycling point.",
-  },
-};
 
 const exampleItems: Item[] = [
   {
@@ -125,6 +79,8 @@ export default function App() {
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
   const [confidence, setConfidence] = useState<number | null>(null);
+  const [guidance, setGuidance] = useState<DisposalGuidance | null>(null);
+  const [friendlyGuidance, setFriendlyGuidance] = useState<string | null>(null);
   const [processingStep, setProcessingStep] = useState(0);
   const processingPulse = useRef(new Animated.Value(0)).current;
 
@@ -195,7 +151,32 @@ export default function App() {
 
         if (!stillOnThisScreen) return;
 
-        setItem(guidanceByCategory[classification.category]);
+        const selectedGuidance = guidanceForClassification(
+          classification.category,
+          classification.confidence,
+        );
+
+        // An unclear image ends here. Llama never identifies an item or
+        // invents disposal advice: it only rewrites app-selected facts.
+        let wording: string | null = null;
+        if (selectedGuidance) {
+          try {
+            wording = await explainVerifiedFacts(selectedGuidance.facts);
+          } catch (error) {
+            // The same verified facts remain the one answer if wording cannot
+            // run on a device.
+            console.warn("Llama wording unavailable:", error);
+          }
+        }
+
+        if (!stillOnThisScreen) return;
+        setGuidance(selectedGuidance);
+        setFriendlyGuidance(wording);
+        setItem({
+          name: selectedGuidance?.title ?? classification.category,
+          category: selectedGuidance?.title ?? "We are not sure",
+          action: selectedGuidance?.facts.join("\n") ?? "",
+        });
         setConfidence(classification.confidence);
         setScreen("result");
       } catch (error) {
@@ -234,10 +215,10 @@ export default function App() {
 
     setPhotoUri(photo.uri);
     setImageSource("camera");
-    // The image is captured for real, but its classification remains mocked
-    // until the ExecuTorch model is integrated.
     setItem(exampleItems[0]);
     setConfidence(null);
+    setGuidance(null);
+    setFriendlyGuidance(null);
     setScreen("preview");
   };
 
@@ -269,14 +250,18 @@ export default function App() {
     console.log(result.assets[0].uri, "Selected image object");
     setPhotoUri(result.assets[0].uri);
     setImageSource("gallery");
-    setItem(exampleItems[0]); // Temporary mock classification
+    setItem(exampleItems[0]);
     setConfidence(null);
+    setGuidance(null);
+    setFriendlyGuidance(null);
     setScreen("preview");
   };
 
   const chooseDemoItem = (nextItem: Item) => {
     setPhotoUri(null);
     setItem(nextItem);
+    setGuidance(null);
+    setFriendlyGuidance(null);
     setScreen("analysing");
   };
 
@@ -693,9 +678,19 @@ export default function App() {
           {isLowConfidence ? (
             <View className="mt-4 rounded-[18px] bg-[#FFF0E6] p-4">
               <Text className="text-sm leading-5 text-ink">
-                This photo was not clear enough for a confident answer. Try
-                taking another photo with one item, good light, and a simple
-                background.
+                {RETAKE_MESSAGE}
+              </Text>
+            </View>
+          ) : guidance ? (
+            <View className="mt-5 rounded-[20px] bg-white p-5">
+              <Text className="text-[10px] font-extrabold tracking-[1.2px] text-forest-muted">
+                WHAT TO DO
+              </Text>
+              <Text className="mt-3 text-base font-semibold leading-6 text-ink">
+                {friendlyGuidance ??
+                  guidance.facts
+                    .map((fact, index) => `${index + 1}. ${fact}`)
+                    .join("\n")}
               </Text>
             </View>
           ) : (
