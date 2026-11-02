@@ -40,6 +40,22 @@ type Item = {
 };
 const MIN_ANALYSIS_TIME_MS = 1_500;
 
+function guidanceSteps(
+  generated: string | null,
+  verifiedFacts: readonly string[],
+): readonly string[] {
+  if (!generated) return verifiedFacts;
+
+  // Llama is allowed to make the wording warmer, but the app keeps the
+  // approved facts if it does not return one clear line for every fact.
+  const steps = generated
+    .split(/(?:^|\n)\s*\d+[.)]\s*/)
+    .map((step) => step.trim())
+    .filter(Boolean);
+
+  return steps.length === verifiedFacts.length ? steps : verifiedFacts;
+}
+
 const processingMessages = [
   "Getting your photo ready",
   "Looking for useful details",
@@ -273,6 +289,12 @@ export default function App() {
   };
 
   const isLowConfidence = confidence !== null && confidence < MIN_CONFIDENCE;
+  const resultSteps = guidance
+    ? guidanceSteps(friendlyGuidance, guidance.facts)
+    : item.action
+        .split("\n")
+        .map((step) => step.trim())
+        .filter(Boolean);
 
   return (
     <SafeAreaView className="flex-1 bg-canvas px-6" edges={["top", "bottom"]}>
@@ -651,47 +673,81 @@ export default function App() {
 
       {screen === "result" && (
         <View className="flex-1 pt-8">
-          <View className="self-start rounded-full bg-sage px-3 py-2">
-            <View className="flex-row items-center gap-1.5">
-              <Feather name="check-circle" size={14} color="#244A3C" />
-              <Text className="text-[11px] font-extrabold tracking-[.8px] text-forest">
-                RESULT READY
-              </Text>
+          <View className="flex-row items-center justify-between">
+            <View className="self-start rounded-full bg-sage px-3 py-2">
+              <View className="flex-row items-center gap-1.5">
+                <Feather name="check-circle" size={14} color="#244A3C" />
+                <Text className="text-[11px] font-extrabold tracking-[.8px] text-forest">
+                  RESULT READY
+                </Text>
+              </View>
             </View>
+            {!isLowConfidence && confidence !== null && (
+              <View className="rounded-full border border-[#D5E3D5] bg-white px-3 py-2">
+                <Text className="text-[11px] font-extrabold text-forest">
+                  {Math.round(confidence * 100)}% match
+                </Text>
+              </View>
+            )}
           </View>
+
           {photoUri && (
             <Image
               source={{ uri: photoUri }}
-              className="mt-5 h-60 w-300 rounded-[26px]"
+              className="mt-5 h-52 w-full rounded-[26px] bg-sage"
+              resizeMode="cover"
             />
           )}
-          <Text className="mt-6 text-[34px] font-extrabold leading-[39px] tracking-[-1.3px] text-ink">
-            {isLowConfidence ? "We are not sure" : item.category}
+
+          <Text className="mt-5 text-[34px] font-extrabold leading-[39px] tracking-[-1.3px] text-ink">
+            {isLowConfidence ? "Let’s try that again" : item.category}
           </Text>
 
           {confidence !== null && (
-            <Text className="mt-3 text-sm font-bold text-forest-muted">
-              Best match: {item.name} · {Math.round(confidence * 100)}%
-              confidence
+            <Text className="mt-2 text-sm font-medium text-forest-muted">
+              {isLowConfidence
+                ? "The photo was not clear enough to identify safely."
+                : `We found a clear match for ${item.name.toLowerCase()}.`}
             </Text>
           )}
+
           {isLowConfidence ? (
-            <View className="mt-4 rounded-[18px] bg-[#FFF0E6] p-4">
-              <Text className="text-sm leading-5 text-ink">
+            <View className="mt-5 flex-row rounded-[20px] border border-[#F2D7C3] bg-[#FFF6EF] p-5">
+              <View className="mr-3 mt-0.5 h-9 w-9 items-center justify-center rounded-full bg-[#FFF0E6]">
+                <Feather name="camera" size={17} color="#B86635" />
+              </View>
+              <Text className="flex-1 text-[15px] font-semibold leading-6 text-ink">
                 {RETAKE_MESSAGE}
               </Text>
             </View>
           ) : guidance ? (
-            <View className="mt-5 rounded-[20px] bg-white p-5">
-              <Text className="text-[10px] font-extrabold tracking-[1.2px] text-forest-muted">
-                WHAT TO DO
+            <View className="mt-5">
+              <Text className="text-[11px] font-extrabold tracking-[1.2px] text-forest-muted">
+                YOUR NEXT STEPS
               </Text>
-              <Text className="mt-3 text-base font-semibold leading-6 text-ink">
-                {friendlyGuidance ??
-                  guidance.facts
-                    .map((fact, index) => `${index + 1}. ${fact}`)
-                    .join("\n")}
-              </Text>
+              <View className="mt-3 gap-3">
+                {resultSteps.map((step, index) => (
+                  <View
+                    key={`${index}-${step}`}
+                    className="flex-row rounded-[20px] border border-[#E2E9E1] bg-white p-4"
+                  >
+                    <View className="mr-3 h-8 w-8 items-center justify-center rounded-full bg-card">
+                      <Text className="text-sm font-extrabold text-forest">
+                        {index + 1}
+                      </Text>
+                    </View>
+                    <Text className="flex-1 pt-1 text-[15px] font-semibold leading-5 text-ink">
+                      {step}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+              <View className="mt-4 flex-row items-center gap-2 px-1">
+                <Feather name="shield" size={15} color="#627A6D" />
+                <Text className="flex-1 text-xs leading-4 text-footer">
+                  Based on verified Cambridge recycling guidance.
+                </Text>
+              </View>
             </View>
           ) : (
             <View className="mt-5 rounded-[20px] bg-white p-5">
