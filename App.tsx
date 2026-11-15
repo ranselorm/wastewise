@@ -30,6 +30,7 @@ import {
   type DisposalGuidance,
 } from "./services/disposalPolicy";
 import { explainVerifiedFacts } from "./services/wastewiseLlama";
+import { saveScan } from "./services/scanHistory";
 
 type Screen =
   | "home"
@@ -108,6 +109,7 @@ export default function App() {
   const [guidance, setGuidance] = useState<DisposalGuidance | null>(null);
   const [friendlyGuidance, setFriendlyGuidance] = useState<string | null>(null);
   const [processingStep, setProcessingStep] = useState(0);
+  const [hasSavedCurrentResult, setHasSavedCurrentResult] = useState(false);
   const processingPulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -245,6 +247,7 @@ export default function App() {
     setConfidence(null);
     setGuidance(null);
     setFriendlyGuidance(null);
+    setHasSavedCurrentResult(false);
     setScreen("preview");
   };
 
@@ -280,6 +283,7 @@ export default function App() {
     setConfidence(null);
     setGuidance(null);
     setFriendlyGuidance(null);
+    setHasSavedCurrentResult(false);
     setScreen("preview");
   };
 
@@ -288,6 +292,7 @@ export default function App() {
     setItem(nextItem);
     setGuidance(null);
     setFriendlyGuidance(null);
+    setHasSavedCurrentResult(false);
     setScreen("analysing");
   };
 
@@ -305,6 +310,36 @@ export default function App() {
         .split("\n")
         .map((step) => step.trim())
         .filter(Boolean);
+  useEffect(() => {
+    if (screen !== "result" || isLowConfidence || hasSavedCurrentResult) {
+      return;
+    }
+
+    const saveCompletedScan = async () => {
+      try {
+        await saveScan({
+          category: item.category,
+          confidence,
+          disposalGuidance: resultSteps.join("\n"),
+          imageUri: photoUri,
+        });
+
+        setHasSavedCurrentResult(true);
+      } catch (error) {
+        console.error("Could not save scan history:", error);
+      }
+    };
+
+    void saveCompletedScan();
+  }, [
+    confidence,
+    hasSavedCurrentResult,
+    isLowConfidence,
+    item.category,
+    photoUri,
+    resultSteps,
+    screen,
+  ]);
 
   return (
     <SafeAreaView className="flex-1 bg-canvas px-6" edges={["top", "bottom"]}>
