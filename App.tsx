@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "./components/Header";
+import RecyclingFinder from "./components/RecyclingFinder";
 import * as ImagePicker from "expo-image-picker";
 
 import {
@@ -30,7 +31,14 @@ import {
 import { explainVerifiedFacts } from "./services/wastewiseLlama";
 
 type Screen =
-  "home" | "guide" | "camera" | "choose" | "preview" | "analysing" | "result";
+  | "home"
+  | "guide"
+  | "camera"
+  | "choose"
+  | "preview"
+  | "analysing"
+  | "result"
+  | "finder";
 type ImageSource = "camera" | "gallery" | null;
 
 type Item = {
@@ -300,6 +308,10 @@ export default function App() {
     <SafeAreaView className="flex-1 bg-canvas px-6" edges={["top", "bottom"]}>
       <StatusBar style="dark" />
       <Header onOpenGuide={openGuide} />
+
+      {screen === "finder" && (
+        <RecyclingFinder onClose={() => setScreen("result")} />
+      )}
 
       {screen === "home" && (
         <View className="flex-1">
@@ -748,6 +760,17 @@ export default function App() {
                   Based on verified Cambridge recycling guidance.
                 </Text>
               </View>
+              <Pressable
+                onPress={() => setScreen("finder")}
+                accessibilityRole="button"
+                accessibilityLabel="Find a recycling centre near you"
+                className="mt-5 flex-row items-center justify-center rounded-[18px] border border-[#C9D5CA] bg-white py-4 active:bg-sage"
+              >
+                <Feather name="map-pin" size={19} color="#244A3C" />
+                <Text className="text-base font-extrabold text-forest">
+                  {"  Find a recycling centre"}
+                </Text>
+              </Pressable>
             </View>
           ) : (
             <View className="mt-5 rounded-[20px] bg-white p-5">
