@@ -1,4 +1,5 @@
 import "./global.css";
+import RecyclingFinder from "./src/features/recycling/RecyclingFinder";
 
 import Feather from "@expo/vector-icons/Feather";
 import { CameraView, type CameraType, useCameraPermissions } from "expo-camera";
@@ -9,6 +10,7 @@ import {
   Animated,
   Easing,
   Image,
+  Modal,
   Pressable,
   Text,
   View,
@@ -125,6 +127,9 @@ export default function App() {
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
   const [confidence, setConfidence] = useState<number | null>(null);
+  const [detectedCategory, setDetectedCategory] = useState<WasteCategory | null>(null);
+  const [finderOpen, setFinderOpen] = useState(false);
+  const [finderCategory, setFinderCategory] = useState<WasteCategory | null>(null);
   const [processingStep, setProcessingStep] = useState(0);
   const processingPulse = useRef(new Animated.Value(0)).current;
 
@@ -197,6 +202,7 @@ export default function App() {
 
         setItem(guidanceByCategory[classification.category]);
         setConfidence(classification.confidence);
+        setDetectedCategory(classification.category);
         setScreen("result");
       } catch (error) {
         console.error("Classification failed:", error);
@@ -277,6 +283,8 @@ export default function App() {
   const chooseDemoItem = (nextItem: Item) => {
     setPhotoUri(null);
     setItem(nextItem);
+    setConfidence(null);
+    setDetectedCategory(null);
     setScreen("analysing");
   };
 
@@ -293,6 +301,59 @@ export default function App() {
     <SafeAreaView className="flex-1 bg-canvas px-6" edges={["top", "bottom"]}>
       <StatusBar style="dark" />
       <Header onOpenGuide={openGuide} />
+      {finderOpen && detectedCategory !== null && (
+        <Modal visible onRequestClose={() => setFinderOpen(false)}>
+          <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setFinderOpen(false)}
+              className="px-4 py-3"
+            >
+              <Text className="font-bold text-forest">Back to result</Text>
+            </Pressable>
+            {finderCategory === null ? (
+              <View className="px-4 py-2">
+                <Text className="mb-3 text-lg font-bold text-ink">
+                  What material are you recycling?
+                </Text>
+                <Text className="mb-3 text-sm text-copy">
+                  Check accepted materials and opening hours before travelling.
+                </Text>
+                <View className="flex-row flex-wrap gap-2">
+                  {(Object.keys(guidanceByCategory) as WasteCategory[]).map((category) => (
+                    <Pressable
+                      key={category}
+                      accessibilityRole="button"
+                      onPress={() => setFinderCategory(category)}
+                      className="rounded-xl bg-sage px-3 py-3"
+                    >
+                      <Text className="font-bold text-forest">
+                        {guidanceByCategory[category].name}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : (
+              <>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setFinderCategory(null)}
+                  className="px-4 py-3"
+                >
+                  <Text className="font-bold text-forest">
+                    Change material ? {guidanceByCategory[finderCategory].name}
+                  </Text>
+                </Pressable>
+                <RecyclingFinder
+                  category={finderCategory}
+                  routesUrl={process.env.EXPO_PUBLIC_RECYCLING_ROUTES_URL}
+                />
+              </>
+            )}
+          </SafeAreaView>
+        </Modal>
+      )}
 
       {screen === "home" && (
         <View className="flex-1">
@@ -707,6 +768,20 @@ export default function App() {
                 {item.action}
               </Text>
             </View>
+          )}
+          {detectedCategory !== null && (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                setFinderCategory(isLowConfidence ? null : detectedCategory);
+                setFinderOpen(true);
+              }}
+              className="mt-3 mb-3 items-center rounded-[18px] bg-sage px-3 py-3"
+            >
+              <Text className="text-base font-extrabold text-forest">
+                Find recycling near me
+              </Text>
+            </Pressable>
           )}
           <Pressable
             onPress={openCamera}
