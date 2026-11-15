@@ -15,7 +15,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "./components/Header";
-import RecyclingFinder from "./components/RecyclingFinder";
+import RecyclingFinder from "./src/features/recycling/RecyclingFinder";
+import type { Category } from "./src/features/recycling/locations";
 import ScanHistory from "./components/ScanHistory";
 import * as ImagePicker from "expo-image-picker";
 
@@ -106,6 +107,8 @@ export default function App() {
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
   const [confidence, setConfidence] = useState<number | null>(null);
+  const [detectedMaterial, setDetectedMaterial] = useState<Category | null>(null);
+  const [finderMaterial, setFinderMaterial] = useState<Category | null>(null);
   const [guidance, setGuidance] = useState<DisposalGuidance | null>(null);
   const [friendlyGuidance, setFriendlyGuidance] = useState<string | null>(null);
   const [processingStep, setProcessingStep] = useState(0);
@@ -206,6 +209,7 @@ export default function App() {
           action: selectedGuidance?.facts.join("\n") ?? "",
         });
         setConfidence(classification.confidence);
+        setDetectedMaterial(classification.category);
         setScreen("result");
       } catch (error) {
         console.error("Classification failed:", error);
@@ -347,7 +351,60 @@ export default function App() {
       <Header onOpenGuide={openGuide} />
 
       {screen === "finder" && (
-        <RecyclingFinder onClose={() => setScreen("result")} />
+        <View className="flex-1">
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setScreen("result")}
+            className="py-3"
+          >
+            <Text className="font-bold text-forest">Back to result</Text>
+          </Pressable>
+          {finderMaterial === null ? (
+            <View>
+              <Text className="mb-3 text-lg font-bold text-ink">
+                What material are you recycling?
+              </Text>
+              <Text className="mb-3 text-sm text-copy">
+                Check accepted materials and opening hours before travelling.
+              </Text>
+              <View className="flex-row flex-wrap gap-2">
+                {([
+                  ["battery", "Battery"],
+                  ["general_waste", "General waste"],
+                  ["glass", "Glass"],
+                  ["metal", "Metal"],
+                  ["organic_waste", "Food and organic waste"],
+                  ["paper_cardboard", "Paper and cardboard"],
+                  ["plastic", "Plastic"],
+                  ["textile", "Textile"],
+                ] as const).map(([category, label]) => (
+                  <Pressable
+                    key={category}
+                    accessibilityRole="button"
+                    onPress={() => setFinderMaterial(category)}
+                    className="rounded-xl bg-sage px-3 py-3"
+                  >
+                    <Text className="font-bold text-forest">{label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ) : (
+            <>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setFinderMaterial(null)}
+                className="py-3"
+              >
+                <Text className="font-bold text-forest">Change material</Text>
+              </Pressable>
+              <RecyclingFinder
+                category={finderMaterial}
+                routesUrl={process.env.EXPO_PUBLIC_RECYCLING_ROUTES_URL}
+              />
+            </>
+          )}
+        </View>
       )}
       {screen === "history" && (
         <ScanHistory onClose={() => setScreen("home")} />
@@ -812,7 +869,12 @@ export default function App() {
                 </Text>
               </View>
               <Pressable
-                onPress={() => setScreen("finder")}
+                onPress={() => {
+              setFinderMaterial(photoUri && confidence !== null && !isLowConfidence
+                ? detectedMaterial
+                : null);
+              setScreen("finder");
+            }}
                 accessibilityRole="button"
                 accessibilityLabel="Find a recycling centre near you"
                 className="mt-5 flex-row items-center justify-center rounded-[18px] border border-[#C9D5CA] bg-white py-4 active:bg-sage"
