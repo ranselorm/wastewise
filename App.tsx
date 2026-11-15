@@ -129,6 +129,7 @@ export default function App() {
   const [confidence, setConfidence] = useState<number | null>(null);
   const [detectedCategory, setDetectedCategory] = useState<WasteCategory | null>(null);
   const [finderOpen, setFinderOpen] = useState(false);
+  const [finderCategory, setFinderCategory] = useState<WasteCategory | null>(null);
   const [processingStep, setProcessingStep] = useState(0);
   const processingPulse = useRef(new Animated.Value(0)).current;
 
@@ -310,10 +311,46 @@ export default function App() {
             >
               <Text className="font-bold text-forest">Back to result</Text>
             </Pressable>
-            <RecyclingFinder
-              category={detectedCategory}
-              routesUrl={process.env.EXPO_PUBLIC_RECYCLING_ROUTES_URL}
-            />
+            {finderCategory === null ? (
+              <View className="px-4 py-2">
+                <Text className="mb-3 text-lg font-bold text-ink">
+                  What material are you recycling?
+                </Text>
+                <Text className="mb-3 text-sm text-copy">
+                  Check accepted materials and opening hours before travelling.
+                </Text>
+                <View className="flex-row flex-wrap gap-2">
+                  {(Object.keys(guidanceByCategory) as WasteCategory[]).map((category) => (
+                    <Pressable
+                      key={category}
+                      accessibilityRole="button"
+                      onPress={() => setFinderCategory(category)}
+                      className="rounded-xl bg-sage px-3 py-3"
+                    >
+                      <Text className="font-bold text-forest">
+                        {guidanceByCategory[category].name}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : (
+              <>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setFinderCategory(null)}
+                  className="px-4 py-3"
+                >
+                  <Text className="font-bold text-forest">
+                    Change material ? {guidanceByCategory[finderCategory].name}
+                  </Text>
+                </Pressable>
+                <RecyclingFinder
+                  category={finderCategory}
+                  routesUrl={process.env.EXPO_PUBLIC_RECYCLING_ROUTES_URL}
+                />
+              </>
+            )}
           </SafeAreaView>
         </Modal>
       )}
@@ -732,10 +769,13 @@ export default function App() {
               </Text>
             </View>
           )}
-          {!isLowConfidence && detectedCategory !== null && (
+          {detectedCategory !== null && (
             <Pressable
               accessibilityRole="button"
-              onPress={() => setFinderOpen(true)}
+              onPress={() => {
+                setFinderCategory(isLowConfidence ? null : detectedCategory);
+                setFinderOpen(true);
+              }}
               className="mt-3 mb-3 items-center rounded-[18px] bg-sage px-3 py-3"
             >
               <Text className="text-base font-extrabold text-forest">
