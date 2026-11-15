@@ -20,6 +20,17 @@ yarn-error.*
 .env*.local
 *.tsbuildinfo
 /ios
+/android/build/
+/android/app/build/
+/android/.gradle/
+/android/.idea/
+/android/.cxx/
+/android/app/.cxx/
+/android/local.properties
+/android/*.iml
+/android/*.hprof
+/android/app/src/main/java/inline/
+/android/*.jsbundle
 /ml/.venv/
 /ml/data/
 /ml/models/
