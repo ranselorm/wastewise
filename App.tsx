@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "./components/Header";
 import RecyclingFinder from "./components/RecyclingFinder";
+import ScanHistory from "./components/ScanHistory";
 import * as ImagePicker from "expo-image-picker";
 
 import {
@@ -38,7 +39,8 @@ type Screen =
   | "preview"
   | "analysing"
   | "result"
-  | "finder";
+  | "finder"
+  | "history";
 type ImageSource = "camera" | "gallery" | null;
 
 type Item = {
@@ -312,6 +314,9 @@ export default function App() {
       {screen === "finder" && (
         <RecyclingFinder onClose={() => setScreen("result")} />
       )}
+      {screen === "history" && (
+        <ScanHistory onClose={() => setScreen("home")} />
+      )}
 
       {screen === "home" && (
         <View className="flex-1">
@@ -348,6 +353,15 @@ export default function App() {
               <Feather name="image" size={20} color="#244A3C" />
               <Text className="text-base font-extrabold text-forest">
                 {"  Choose from gallery"}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setScreen("history")}
+              className="mt-3 flex-row items-center justify-center rounded-[18px] border border-[#C9D5CA] bg-white py-[15px] active:bg-sage"
+            >
+              <Feather name="clock" size={19} color="#244A3C" />
+              <Text className="text-base font-extrabold text-forest">
+                {"  View scan history"}
               </Text>
             </Pressable>
           </View>
@@ -675,7 +689,9 @@ export default function App() {
               <View
                 key={message}
                 className={`h-2 rounded-full ${
-                  index === processingStep ? "w-10 bg-forest" : "w-2 bg-[#DDE5DC]"
+                  index === processingStep
+                    ? "w-10 bg-forest"
+                    : "w-2 bg-[#DDE5DC]"
                 }`}
               />
             ))}
