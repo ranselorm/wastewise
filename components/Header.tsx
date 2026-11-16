@@ -3,9 +3,15 @@ import { Pressable, Text, View } from "react-native";
 
 type HeaderProps = {
   onOpenGuide: () => void;
+  voiceGuidanceEnabled: boolean;
+  onToggleVoiceGuidance: () => void;
 };
 
-export default function Header({ onOpenGuide }: HeaderProps) {
+export default function Header({
+  onOpenGuide,
+  voiceGuidanceEnabled,
+  onToggleVoiceGuidance,
+}: HeaderProps) {
   return (
     <View className="flex-row items-center justify-between pt-3.5">
       <View className="h-10 w-10 items-center justify-center rounded-[13px] bg-forest">
@@ -14,6 +20,24 @@ export default function Header({ onOpenGuide }: HeaderProps) {
       <Text className="ml-2.5 mr-auto text-[19px] font-bold tracking-tight text-ink">
         wastewise
       </Text>
+      <Pressable
+        onPress={onToggleVoiceGuidance}
+        accessibilityRole="switch"
+        accessibilityState={{ checked: voiceGuidanceEnabled }}
+        accessibilityLabel="Voice guidance"
+        accessibilityHint={
+          voiceGuidanceEnabled
+            ? "Turns off voice guidance"
+            : "Turns on voice guidance"
+        }
+        className="mr-2 h-9 w-9 items-center justify-center rounded-full bg-sage active:opacity-70"
+      >
+        <Feather
+          name={voiceGuidanceEnabled ? "volume-2" : "volume-x"}
+          size={17}
+          color="#244A3C"
+        />
+      </Pressable>
       <Pressable
         onPress={onOpenGuide}
         accessibilityRole="button"

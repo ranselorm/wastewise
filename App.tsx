@@ -118,6 +118,7 @@ export default function App() {
   const [hasSavedCurrentResult, setHasSavedCurrentResult] = useState(false);
   const [voiceGuidanceEnabled, setVoiceGuidanceEnabledState] = useState(false);
   const processingPulse = useRef(new Animated.Value(0)).current;
+  const analysisRequestId = useRef(0);
 
   useEffect(() => {
     if (screen !== "analysing") return;
@@ -166,6 +167,7 @@ export default function App() {
     }
 
     let stillOnThisScreen = true;
+    const requestId = ++analysisRequestId.current;
     const analysisStartedAt = Date.now();
 
     const analysePhoto = async () => {
@@ -191,22 +193,9 @@ export default function App() {
           classification.confidence,
         );
 
-        // An unclear image ends here. Llama never identifies an item or
-        // invents disposal advice: it only rewrites app-selected facts.
-        let wording: string | null = null;
-        if (selectedGuidance) {
-          try {
-            wording = await explainVerifiedFacts(selectedGuidance.facts);
-          } catch (error) {
-            // The same verified facts remain the one answer if wording cannot
-            // run on a device.
-            console.warn("Llama wording unavailable:", error);
-          }
-        }
-
         if (!stillOnThisScreen) return;
         setGuidance(selectedGuidance);
-        setFriendlyGuidance(wording);
+        setFriendlyGuidance(null);
         setItem({
           name: selectedGuidance?.title ?? classification.category,
           category: selectedGuidance?.title ?? "We are not sure",
@@ -214,6 +203,22 @@ export default function App() {
         });
         setConfidence(classification.confidence);
         setScreen("result");
+
+        // The classifier result is ready now, so show it immediately. Llama
+        // is only an optional wording layer and must never hold up the result
+        // screen, especially on a slower emulator or phone.
+        if (selectedGuidance) {
+          void explainVerifiedFacts(selectedGuidance.facts)
+            .then((wording) => {
+              if (analysisRequestId.current === requestId) {
+                setFriendlyGuidance(wording);
+              }
+            })
+            .catch((error) => {
+              // The verified facts are already visible as the safe fallback.
+              console.warn("Llama wording unavailable:", error);
+            });
+        }
       } catch (error) {
         console.error("Classification failed:", error);
 
@@ -320,16 +325,38 @@ export default function App() {
   const spokenResult = isLowConfidence
     ? `Let's try that again. ${RETAKE_MESSAGE}`
     : `${item.category}. ${resultSteps.join(". ")}`;
+  const screenVoicePrompt =
+    screen === "home"
+      ? "Voice guidance is on. Welcome to Wastewise. You can scan an item, choose a photo from your gallery, view your scan history, or open the local guide."
+      : screen === "guide"
+        ? "Local guide. Read the recycling tips, or use the back button to return."
+        : screen === "camera"
+          ? "Camera. Place one item clearly in the frame, then use the take photo button."
+          : screen === "choose"
+            ? "Choose a sample item to see how Wastewise gives disposal guidance."
+            : screen === "preview"
+              ? "Photo preview. Confirm that the item is clear, then analyse the photo."
+              : screen === "analysing"
+                ? "Wastewise is analysing your photo on this device."
+                : screen === "result"
+                  ? spokenResult
+                  : screen === "finder"
+                    ? "Recycling centre finder. Browse the map or select a recycling centre from the list."
+                    : "Scan history. Review or remove your previous scan results.";
 
   const toggleVoiceGuidance = () => {
     const nextEnabled = !voiceGuidanceEnabled;
     setVoiceGuidanceEnabledState(nextEnabled);
     setVoiceGuidanceEnabled(nextEnabled);
-
-    if (nextEnabled) {
-      speak(spokenResult, { force: true });
-    }
   };
+
+  // Voice guidance is opt-in. Once enabled from the home screen or header,
+  // it reads the purpose of each screen as the user moves through the app.
+  useEffect(() => {
+    if (!voiceGuidanceEnabled) return;
+    speak(screenVoicePrompt, { force: true });
+  }, [screen, screenVoicePrompt, voiceGuidanceEnabled]);
+
   useEffect(() => {
     if (screen !== "result" || isLowConfidence || hasSavedCurrentResult) {
       return;
@@ -364,7 +391,11 @@ export default function App() {
   return (
     <SafeAreaView className="flex-1 bg-canvas px-6" edges={["top", "bottom"]}>
       <StatusBar style="dark" />
-      <Header onOpenGuide={openGuide} />
+      <Header
+        onOpenGuide={openGuide}
+        voiceGuidanceEnabled={voiceGuidanceEnabled}
+        onToggleVoiceGuidance={toggleVoiceGuidance}
+      />
 
       {screen === "finder" && (
         <RecyclingFinder onClose={() => setScreen("result")} />
