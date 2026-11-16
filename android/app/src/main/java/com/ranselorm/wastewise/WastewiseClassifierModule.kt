@@ -26,9 +26,10 @@ class WastewiseClassifierModule(
   private val modelFileName = "wastewise_mobilenet_v3_small.pte"
 
   // This order must match the order used when the MobileNet model was trained.
-  // The model returns eight scores, and each position maps to one name here.
+  // The model returns nine scores, and each position maps to one name here.
   private val classNames = listOf(
     "battery",
+    "e-waste",
     "general_waste",
     "glass",
     "metal",

@@ -6,7 +6,7 @@ import random
 
 import torch
 from torch import nn, optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 from torchvision import datasets, models, transforms
 
 
@@ -70,10 +70,24 @@ def make_loaders() -> tuple[DataLoader, DataLoader, DataLoader, list[str]]:
     if train_data.classes != val_data.classes or train_data.classes != test_data.classes:
         raise ValueError("The category folders do not match across the three splits.")
 
+    # Sampling inversely to class frequency prevents a smaller class such as
+    # E-waste from being overwhelmed by the established 1,200-image classes.
+    # On the legacy balanced dataset, every class receives the same weight.
+    class_counts = torch.bincount(torch.tensor(train_data.targets))
+    sample_weights = torch.tensor(
+        [1.0 / class_counts[target].item() for target in train_data.targets],
+        dtype=torch.double,
+    )
+    train_sampler = WeightedRandomSampler(
+        weights=sample_weights,
+        num_samples=len(sample_weights),
+        replacement=True,
+    )
+
     train_loader = DataLoader(
         train_data,
         batch_size=BATCH_SIZE,
-        shuffle=True,
+        sampler=train_sampler,
         num_workers=0,
     )
     val_loader = DataLoader(

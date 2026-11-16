@@ -19,6 +19,13 @@ const guidanceByCategory: Record<WasteCategory, DisposalGuidance> = {
       "If you have your own household bin collection, small household batteries may be placed in a small tied plastic bag loosely on top of the bin lid.",
     ],
   },
+  "e-waste": {
+    title: "Electrical item",
+    facts: [
+      "Do not put electrical items in a household bin.",
+      "Take the item to a Household Recycling Centre.",
+    ],
+  },
   general_waste: {
     title: "General waste",
     facts: ["Put ordinary non-recyclable household waste in the black bin."],

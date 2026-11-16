@@ -2,6 +2,7 @@ import { NativeModules } from "react-native";
 
 export type WasteCategory =
   | "battery"
+  | "e-waste"
   | "general_waste"
   | "glass"
   | "metal"
