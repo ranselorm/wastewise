@@ -158,6 +158,7 @@ export default function RecyclingFinder({ category, routesUrl, getRouteHeaders }
         }
       }} />
       <MapView ref={map} style={styles.map} provider={PROVIDER_GOOGLE}
+        toolbarEnabled={false}
         showsUserLocation={hasPermission}
         initialRegion={{ ...cambridge, latitudeDelta: 0.35, longitudeDelta: 0.45 }}
         onMapReady={focusSites}>
