@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Button, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import OfflineCambridgeMap from './OfflineCambridgeMap';
 import { cambridge, distanceKm, locations } from './locations';
+import { travelModes, type TravelMode } from './travelModes';
 import type { Category, Coordinate, RecyclingLocation } from './locations';
 
-type Route = { points: Coordinate[]; steps: string[]; distanceMetres: number; seconds: number };
+type Route = { mode?: TravelMode; points: Coordinate[]; steps: string[]; distanceMetres: number; seconds: number };
 type Props = {
   category: Category;
   routesUrl?: string;
@@ -21,6 +22,7 @@ export default function RecyclingFinder({ category, routesUrl, getRouteHeaders }
   const [offline, setOffline] = useState(false);
   const [aroundCambridge, setAroundCambridge] = useState(false);
   const [selected, setSelected] = useState<RecyclingLocation>();
+  const [mode, setMode] = useState<TravelMode>('DRIVE');
   const [route, setRoute] = useState<Route>();
   const [routing, setRouting] = useState(false);
   const [error, setError] = useState('');
@@ -121,7 +123,7 @@ export default function RecyclingFinder({ category, routesUrl, getRouteHeaders }
       const response = await fetch(routesUrl, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ origin, destinationId: destination.id }),
+        body: JSON.stringify({ origin, destinationId: destination.id, mode }),
         signal: controller.signal,
       });
       if (!response.ok) throw new Error('Route unavailable');
@@ -130,6 +132,11 @@ export default function RecyclingFinder({ category, routesUrl, getRouteHeaders }
           !Array.isArray(result.steps) || !Number.isFinite(result.distanceMetres) ||
           !Number.isFinite(result.seconds)) throw new Error('Invalid route');
       if (request.current !== controller) return;
+      // Older endpoints default to driving and return no mode.
+      if ((result.mode ?? 'DRIVE') !== mode) {
+        setError('This route service does not support the selected travel mode yet.');
+        return;
+      }
       setRoute(result);
       map.current?.fitToCoordinates(result.points, {
         edgePadding: { top: 48, right: 48, bottom: 48, left: 48 }, animated: true,
@@ -189,10 +196,30 @@ export default function RecyclingFinder({ category, routesUrl, getRouteHeaders }
             {!offline && <Button title="Check council opening hours" onPress={() => {
               Linking.openURL(site.sources[2]).catch(() => setError('Council page could not be opened.'));
             }} />}
-            {!offline && <Button title={routing ? 'Getting directions…' :
-              position && !aroundCambridge ? 'Driving directions from my location' :
-                'Preview driving directions from central Cambridge'}
-              disabled={routing} onPress={() => void showDirections(site)} />}
+            {!offline && <>
+              <Text style={styles.title}>Travel mode</Text>
+              <View style={styles.travelModes}>
+                {travelModes.map(option => (
+                  <Pressable key={option.mode} accessibilityRole="button"
+                    accessibilityState={{ selected: mode === option.mode }}
+                    style={[styles.modeButton, mode === option.mode && styles.activeMode]}
+                    onPress={() => {
+                      if (mode === option.mode) return;
+                      resetRoute();
+                      setMode(option.mode);
+                    }}>
+                    <Text style={mode === option.mode ? styles.activeModeText : undefined}>{option.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              {mode !== 'DRIVE' && (
+                <Text>Walking and cycling routes are in beta and may be missing sidewalks, pedestrian paths or cycle paths. Check the centre's access rules before travelling.</Text>
+              )}
+              <Button title={routing ? 'Getting directions…' :
+                position && !aroundCambridge ? 'Preview route from my location' :
+                  'Preview route from central Cambridge'}
+                disabled={routing} onPress={() => void showDirections(site)} />
+            </>}
             {error ? <Text accessibilityLiveRegion="polite">{error}</Text> : null}
             {route && <>
               <Text style={styles.title}>
@@ -225,5 +252,9 @@ const styles = StyleSheet.create({
   notice: { padding: 8, color: '#143b2c' },
   sheet: { maxHeight: '45%', backgroundColor: '#fff', borderTopLeftRadius: 18, borderTopRightRadius: 18, elevation: 5 },
   details: { padding: 16, gap: 8 },
+  travelModes: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  modeButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 14, borderRadius: 8, backgroundColor: '#e6f1e8' },
+  activeMode: { backgroundColor: '#14634a' },
+  activeModeText: { color: '#fff', fontWeight: '700' },
   title: { fontSize: 17, fontWeight: '700' },
 });
