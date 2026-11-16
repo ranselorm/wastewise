@@ -8,6 +8,8 @@ import { travelModes, type TravelMode } from './travelModes';
 import type { Category, Coordinate, RecyclingLocation } from './locations';
 
 type Route = { mode?: TravelMode; points: Coordinate[]; steps: string[]; distanceMetres: number; seconds: number };
+type RoutePreview = Route & { startLabel: string; destinationName: string };
+
 type Props = {
   category: Category;
   routesUrl?: string;
@@ -23,7 +25,7 @@ export default function RecyclingFinder({ category, routesUrl, getRouteHeaders }
   const [aroundCambridge, setAroundCambridge] = useState(false);
   const [selected, setSelected] = useState<RecyclingLocation>();
   const [mode, setMode] = useState<TravelMode>('DRIVE');
-  const [route, setRoute] = useState<Route>();
+  const [route, setRoute] = useState<RoutePreview>();
   const [routing, setRouting] = useState(false);
   const [error, setError] = useState('');
   const [locationMessage, setLocationMessage] = useState('Finding your location… You can browse Cambridge now.');
@@ -137,7 +139,11 @@ export default function RecyclingFinder({ category, routesUrl, getRouteHeaders }
         setError('This route service does not support the selected travel mode yet.');
         return;
       }
-      setRoute(result);
+      setRoute({
+        ...result,
+        startLabel: position && !aroundCambridge ? 'Your location' : 'Central Cambridge',
+        destinationName: destination.name,
+      });
       map.current?.fitToCoordinates(result.points, {
         edgePadding: { top: 48, right: 48, bottom: 48, left: 48 }, animated: true,
       });
@@ -180,9 +186,19 @@ export default function RecyclingFinder({ category, routesUrl, getRouteHeaders }
         showsUserLocation={hasPermission}
         initialRegion={{ ...cambridge, latitudeDelta: 0.35, longitudeDelta: 0.45 }}
         onMapReady={focusSites}>
-        {matches.map(match => <Marker key={match.id} coordinate={match.coordinate}
+        {matches.filter(match => !route || match.id !== site?.id).map(match => <Marker key={match.id} coordinate={match.coordinate}
           accessibilityLabel={match.name} onPress={() => selectSite(match)} />)}
-        {route && <Polyline coordinates={route.points} strokeColor="#146cbb" strokeWidth={5} />}
+        {route && <>
+          <Polyline coordinates={route.points} strokeColor="#146cbb" strokeWidth={5} />
+          <Marker coordinate={route.points[0]} title={route.startLabel}
+            accessibilityLabel={`A. ${route.startLabel}`} anchor={{ x: 0.5, y: 0.5 }}>
+            <View style={styles.routePin}><Text style={styles.routePinLabel}>A</Text></View>
+          </Marker>
+          <Marker coordinate={route.points[route.points.length - 1]} title={route.destinationName}
+            accessibilityLabel={`B. ${route.destinationName}`} anchor={{ x: 0.5, y: 0.5 }}>
+            <View style={[styles.routePin, styles.destinationPin]}><Text style={styles.routePinLabel}>B</Text></View>
+          </Marker>
+        </>}
       </MapView>}
       <View style={styles.sheet}>
         <ScrollView contentContainerStyle={styles.details}>
@@ -222,6 +238,9 @@ export default function RecyclingFinder({ category, routesUrl, getRouteHeaders }
             </>}
             {error ? <Text accessibilityLiveRegion="polite">{error}</Text> : null}
             {route && <>
+              <Text style={styles.title}>Route overview</Text>
+              <Text>A · {route.startLabel}</Text>
+              <Text>B · {route.destinationName}</Text>
               <Text style={styles.title}>
                 {(route.distanceMetres / 1000).toFixed(1)} km · {Math.ceil(route.seconds / 60)} min
               </Text>
@@ -252,6 +271,18 @@ const styles = StyleSheet.create({
   notice: { padding: 8, color: '#143b2c' },
   sheet: { maxHeight: '45%', backgroundColor: '#fff', borderTopLeftRadius: 18, borderTopRightRadius: 18, elevation: 5 },
   details: { padding: 16, gap: 8 },
+  routePin: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#fff',
+    backgroundColor: '#165497',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  destinationPin: { backgroundColor: '#14634a' },
+  routePinLabel: { fontWeight: '700', color: '#fff' },
   travelModes: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   modeButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 14, borderRadius: 8, backgroundColor: '#e6f1e8' },
   activeMode: { backgroundColor: '#14634a' },
