@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Button, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
+import OfflineCambridgeMap from './OfflineCambridgeMap';
 import { cambridge, distanceKm, locations } from './locations';
 import type { Category, Coordinate, RecyclingLocation } from './locations';
 
@@ -17,6 +18,7 @@ export default function RecyclingFinder({ category, routesUrl, getRouteHeaders }
   const request = useRef<AbortController | null>(null);
   const [position, setPosition] = useState<Coordinate>();
   const [hasPermission, setHasPermission] = useState(false);
+  const [offline, setOffline] = useState(false);
   const [aroundCambridge, setAroundCambridge] = useState(false);
   const [selected, setSelected] = useState<RecyclingLocation>();
   const [route, setRoute] = useState<Route>();
@@ -73,7 +75,7 @@ export default function RecyclingFinder({ category, routesUrl, getRouteHeaders }
     setRouting(false);
   }, [category]);
 
-  const origin = (!aroundCambridge && position) || cambridge;
+  const origin = (!offline && !aroundCambridge && position) || cambridge;
   const matches = locations.filter(site => Boolean(site.materials[category]))
     .sort((a, b) => distanceKm(origin, a.coordinate) - distanceKm(origin, b.coordinate));
   const site = selected && selected.materials[category] ? selected : undefined;
@@ -95,6 +97,11 @@ export default function RecyclingFinder({ category, routesUrl, getRouteHeaders }
     setRoute(undefined);
     setError('');
     setRouting(false);
+  }
+
+  function selectSite(destination: RecyclingLocation) {
+    resetRoute();
+    setSelected(destination);
   }
 
   async function showDirections(destination: RecyclingLocation) {
@@ -143,8 +150,12 @@ export default function RecyclingFinder({ category, routesUrl, getRouteHeaders }
   return (
     <View style={styles.screen}>
       <Text style={styles.notice}>Check accepted materials and opening hours before travelling.</Text>
-      {locationMessage ? <Text style={styles.notice}>{locationMessage}</Text> : null}
-      <Button title={position && !aroundCambridge ? 'Search around Cambridge' :
+      <Button title={offline ? 'Switch to online map' : 'Switch to offline map'} onPress={() => {
+        resetRoute();
+        setOffline(!offline);
+      }} />
+      {!offline && locationMessage ? <Text style={styles.notice}>{locationMessage}</Text> : null}
+      {!offline && <Button title={position && !aroundCambridge ? 'Search around Cambridge' :
         position ? 'Search near me' : 'Show Cambridge sites'} onPress={() => {
         if (position) {
           resetRoute();
@@ -156,19 +167,16 @@ export default function RecyclingFinder({ category, routesUrl, getRouteHeaders }
         } else {
           focusSites();
         }
-      }} />
-      <MapView ref={map} style={styles.map} provider={PROVIDER_GOOGLE}
+      }} />}
+      {offline ? <OfflineCambridgeMap sites={matches} selectedId={site?.id} onSelect={selectSite} /> : <MapView ref={map} style={styles.map} provider={PROVIDER_GOOGLE}
         toolbarEnabled={false}
         showsUserLocation={hasPermission}
         initialRegion={{ ...cambridge, latitudeDelta: 0.35, longitudeDelta: 0.45 }}
         onMapReady={focusSites}>
         {matches.map(match => <Marker key={match.id} coordinate={match.coordinate}
-          accessibilityLabel={match.name} onPress={() => {
-            resetRoute();
-            setSelected(match);
-          }} />)}
+          accessibilityLabel={match.name} onPress={() => selectSite(match)} />)}
         {route && <Polyline coordinates={route.points} strokeColor="#146cbb" strokeWidth={5} />}
-      </MapView>
+      </MapView>}
       <View style={styles.sheet}>
         <ScrollView contentContainerStyle={styles.details}>
           {site ? <>
@@ -178,13 +186,13 @@ export default function RecyclingFinder({ category, routesUrl, getRouteHeaders }
             <Text>{site.hours}</Text>
             <Text>Household waste only. Pins indicate approximate site locations.</Text>
             <Text>Sources reviewed {site.reviewed}</Text>
-            <Button title="Check council opening hours" onPress={() => {
+            {!offline && <Button title="Check council opening hours" onPress={() => {
               Linking.openURL(site.sources[2]).catch(() => setError('Council page could not be opened.'));
-            }} />
-            <Button title={routing ? 'Getting directions…' :
+            }} />}
+            {!offline && <Button title={routing ? 'Getting directions…' :
               position && !aroundCambridge ? 'Driving directions from my location' :
                 'Preview driving directions from central Cambridge'}
-              disabled={routing} onPress={() => void showDirections(site)} />
+              disabled={routing} onPress={() => void showDirections(site)} />}
             {error ? <Text accessibilityLiveRegion="polite">{error}</Text> : null}
             {route && <>
               <Text style={styles.title}>
@@ -196,11 +204,10 @@ export default function RecyclingFinder({ category, routesUrl, getRouteHeaders }
             <Text style={styles.title}>Recycling locations</Text>
             {matches.length === 0
               ? <Text>No verified sites in this list for this category. Check the item-specific disposal advice.</Text>
-              : matches.map(match => <Button key={match.id}
-                title={match.name + ' · ' + distanceKm(origin, match.coordinate).toFixed(1) + ' km away'}
+              : matches.map((match, index) => <Button key={match.id}
+                title={(offline ? (index + 1) + '. ' : '') + match.name + ' · ' + distanceKm(origin, match.coordinate).toFixed(1) + ' km away'}
                 onPress={() => {
-                  resetRoute();
-                  setSelected(match);
+                  selectSite(match);
                   map.current?.animateToRegion({
                     ...match.coordinate, latitudeDelta: 0.025, longitudeDelta: 0.025,
                   });
