@@ -31,6 +31,12 @@ import {
 } from "./services/disposalPolicy";
 import { explainVerifiedFacts } from "./services/wastewiseLlama";
 import { saveScan } from "./services/scanHistory";
+import {
+  repeatSpeech,
+  setVoiceGuidanceEnabled,
+  speak,
+  stopSpeech,
+} from "./services/speechService";
 
 type Screen =
   | "home"
@@ -110,6 +116,7 @@ export default function App() {
   const [friendlyGuidance, setFriendlyGuidance] = useState<string | null>(null);
   const [processingStep, setProcessingStep] = useState(0);
   const [hasSavedCurrentResult, setHasSavedCurrentResult] = useState(false);
+  const [voiceGuidanceEnabled, setVoiceGuidanceEnabledState] = useState(false);
   const processingPulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -310,6 +317,19 @@ export default function App() {
         .split("\n")
         .map((step) => step.trim())
         .filter(Boolean);
+  const spokenResult = isLowConfidence
+    ? `Let's try that again. ${RETAKE_MESSAGE}`
+    : `${item.category}. ${resultSteps.join(". ")}`;
+
+  const toggleVoiceGuidance = () => {
+    const nextEnabled = !voiceGuidanceEnabled;
+    setVoiceGuidanceEnabledState(nextEnabled);
+    setVoiceGuidanceEnabled(nextEnabled);
+
+    if (nextEnabled) {
+      speak(spokenResult, { force: true });
+    }
+  };
   useEffect(() => {
     if (screen !== "result" || isLowConfidence || hasSavedCurrentResult) {
       return;
@@ -812,6 +832,42 @@ export default function App() {
                 </Text>
               </View>
               <Pressable
+                onPress={toggleVoiceGuidance}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: voiceGuidanceEnabled }}
+                accessibilityLabel="Voice guidance"
+                accessibilityHint={
+                  voiceGuidanceEnabled
+                    ? "Turns off voice guidance"
+                    : "Reads this result aloud and turns on voice guidance"
+                }
+                className="mt-4 flex-row items-center justify-center rounded-[18px] bg-sage py-4 active:opacity-85"
+              >
+                <Feather
+                  name={voiceGuidanceEnabled ? "volume-2" : "volume-x"}
+                  size={19}
+                  color="#244A3C"
+                />
+                <Text className="text-base font-extrabold text-forest">
+                  {voiceGuidanceEnabled
+                    ? "  Voice guidance on"
+                    : "  Read guidance aloud"}
+                </Text>
+              </Pressable>
+              {voiceGuidanceEnabled && (
+                <Pressable
+                  onPress={repeatSpeech}
+                  accessibilityRole="button"
+                  accessibilityLabel="Repeat disposal guidance"
+                  className="mt-3 flex-row items-center justify-center gap-2 py-2"
+                >
+                  <Feather name="rotate-ccw" size={16} color="#244A3C" />
+                  <Text className="text-sm font-bold text-forest">
+                    Repeat guidance
+                  </Text>
+                </Pressable>
+              )}
+              <Pressable
                 onPress={() => setScreen("finder")}
                 accessibilityRole="button"
                 accessibilityLabel="Find a recycling centre near you"
@@ -833,8 +889,31 @@ export default function App() {
               </Text>
             </View>
           )}
+          {isLowConfidence && (
+            <Pressable
+              onPress={toggleVoiceGuidance}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: voiceGuidanceEnabled }}
+              accessibilityLabel="Voice guidance"
+              className="mt-4 flex-row items-center justify-center rounded-[18px] bg-sage py-4 active:opacity-85"
+            >
+              <Feather
+                name={voiceGuidanceEnabled ? "volume-2" : "volume-x"}
+                size={19}
+                color="#244A3C"
+              />
+              <Text className="text-base font-extrabold text-forest">
+                {voiceGuidanceEnabled
+                  ? "  Voice guidance on"
+                  : "  Read guidance aloud"}
+              </Text>
+            </Pressable>
+          )}
           <Pressable
-            onPress={openCamera}
+            onPress={() => {
+              stopSpeech();
+              void openCamera();
+            }}
             className="mt-auto mb-4 flex-row items-center justify-center rounded-[18px] bg-ink py-[17px] active:opacity-85"
           >
             <Feather name="camera" size={20} color="#B7D9A8" />
