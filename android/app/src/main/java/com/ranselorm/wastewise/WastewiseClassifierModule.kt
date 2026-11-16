@@ -23,7 +23,9 @@ class WastewiseClassifierModule(
 
   // This is the small image-classification model bundled with the Android app.
   // It identifies the item category; it does not provide disposal guidance.
-  private val modelFileName = "wastewise_mobilenet_v3_small.pte"
+  // v3 has nine categories. A new asset name deliberately forces Android to
+  // copy it instead of reusing the older eight-class model from app storage.
+  private val modelFileName = "wastewise_mobilenet_v3_small_v3.pte"
 
   // This order must match the order used when the MobileNet model was trained.
   // The model returns nine scores, and each position maps to one name here.
