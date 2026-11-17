@@ -10,6 +10,7 @@ import {
   Easing,
   Image,
   Pressable,
+  ScrollView,
   Text,
   View,
 } from "react-native";
@@ -25,7 +26,6 @@ import {
 } from "./services/wastewiseClassifier.ts";
 import {
   guidanceForClassification,
-  MIN_CONFIDENCE,
   RETAKE_MESSAGE,
   type DisposalGuidance,
 } from "./services/disposalPolicy";
@@ -315,7 +315,18 @@ export default function App() {
     setScreen("guide");
   };
 
-  const isLowConfidence = confidence !== null && confidence < MIN_CONFIDENCE;
+  const cancelAnalysis = () => {
+    // Native inference cannot safely be interrupted halfway through, but this
+    // invalidates its result immediately and returns the user to the preview.
+    // A later resolution from the cancelled request is therefore ignored.
+    analysisRequestId.current += 1;
+    setScreen("preview");
+  };
+
+  // Guidance is present only when the category-specific confidence gate has
+  // accepted the result. This lets the lower, cautious e-waste threshold work
+  // consistently in both the result text and the actions shown to the user.
+  const isLowConfidence = confidence !== null && guidance === null;
   const resultSteps = guidance
     ? guidanceSteps(friendlyGuidance, guidance.facts)
     : item.action
@@ -729,7 +740,7 @@ export default function App() {
           {photoUri ? (
             <Image
               source={{ uri: photoUri }}
-              className="h-28 w-28 rounded-[26px]"
+              className="h-44 w-44 rounded-[30px]"
             />
           ) : (
             <View className="h-24 w-24 items-center justify-center rounded-full bg-sage">
@@ -782,11 +793,25 @@ export default function App() {
               />
             ))}
           </View>
+          <Pressable
+            onPress={cancelAnalysis}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel analysis and return to photo preview"
+            className="mt-9 rounded-[18px] border border-[#C9D5CA] bg-white px-7 py-4 active:bg-sage"
+          >
+            <Text className="text-base font-extrabold text-forest">
+              Cancel and try another photo
+            </Text>
+          </Pressable>
         </View>
       )}
 
       {screen === "result" && (
-        <View className="flex-1 pt-8">
+        <ScrollView
+          className="flex-1"
+          contentContainerStyle={{ paddingTop: 32, paddingBottom: 28 }}
+          showsVerticalScrollIndicator={false}
+        >
           <View className="flex-row items-center justify-between">
             <View className="self-start rounded-full bg-sage px-3 py-2">
               <View className="flex-row items-center gap-1.5">
@@ -945,7 +970,7 @@ export default function App() {
               stopSpeech();
               void openCamera();
             }}
-            className="mt-auto mb-4 flex-row items-center justify-center rounded-[18px] bg-ink py-[17px] active:opacity-85"
+            className="mt-8 flex-row items-center justify-center rounded-[18px] bg-ink py-[17px] active:opacity-85"
           >
             <Feather name="camera" size={20} color="#B7D9A8" />
             <Text className="text-base font-extrabold text-white">
@@ -954,12 +979,12 @@ export default function App() {
           </Pressable>
           <Pressable
             onPress={() => setScreen("home")}
-            className="mb-4 flex-row items-center justify-center gap-2 py-2"
+            className="mt-5 flex-row items-center justify-center gap-2 py-3"
           >
             <Feather name="arrow-left" size={16} color="#244A3C" />
             <Text className="text-sm font-bold text-forest">Back home</Text>
           </Pressable>
-        </View>
+        </ScrollView>
       )}
     </SafeAreaView>
   );

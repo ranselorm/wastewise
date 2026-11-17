@@ -75,11 +75,17 @@ const guidanceByCategory: Record<WasteCategory, DisposalGuidance> = {
 };
 
 export const MIN_CONFIDENCE = 0.6;
+// E-waste has the smallest training set. If it is the model's top category we
+// allow a slightly lower score, rather than rejecting clearly electrical items
+// such as chargers and cables. Other categories keep the stricter threshold.
+export const E_WASTE_MIN_CONFIDENCE = 0.4;
 export const RETAKE_MESSAGE = "Please retake the photo so I can identify the item clearly.";
 
 export function guidanceForClassification(
   category: WasteCategory,
   confidence: number,
 ): DisposalGuidance | null {
-  return confidence >= MIN_CONFIDENCE ? guidanceByCategory[category] : null;
+  const threshold =
+    category === "e-waste" ? E_WASTE_MIN_CONFIDENCE : MIN_CONFIDENCE;
+  return confidence >= threshold ? guidanceByCategory[category] : null;
 }
