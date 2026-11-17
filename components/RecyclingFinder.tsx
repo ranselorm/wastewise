@@ -68,7 +68,7 @@ export default function RecyclingFinder({ onClose }: { onClose: () => void }) {
         </Pressable>
       </View>
       <View className="overflow-hidden rounded-[24px] border border-[#DCE6DC] bg-white">
-        <MapView ref={mapRef} provider={PROVIDER_GOOGLE} initialRegion={cambridgeRegion} style={styles.map} showsUserLocation={userLocation !== null} showsMyLocationButton accessibilityLabel="Map of nearby recycling centres">
+        <MapView ref={mapRef} provider={PROVIDER_GOOGLE} toolbarEnabled={false} initialRegion={cambridgeRegion} style={styles.map} showsUserLocation={userLocation !== null} showsMyLocationButton accessibilityLabel="Map of nearby recycling centres">
           {recyclingCentres.map((centre) => <Marker key={centre.id} coordinate={centre} title={centre.name} description={centre.area} pinColor="#244A3C" />)}
         </MapView>
       </View>

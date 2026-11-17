@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Button, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import OfflineCambridgeMap from './OfflineCambridgeMap';
@@ -209,9 +209,6 @@ export default function RecyclingFinder({ category, routesUrl, getRouteHeaders }
             <Text>{site.hours}</Text>
             <Text>Household waste only. Pins indicate approximate site locations.</Text>
             <Text>Sources reviewed {site.reviewed}</Text>
-            {!offline && <Button title="Check council opening hours" onPress={() => {
-              Linking.openURL(site.sources[2]).catch(() => setError('Council page could not be opened.'));
-            }} />}
             {!offline && <>
               <Text style={styles.title}>Travel mode</Text>
               <View style={styles.travelModes}>
