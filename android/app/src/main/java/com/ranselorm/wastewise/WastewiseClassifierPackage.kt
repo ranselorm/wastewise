@@ -12,6 +12,7 @@ class WastewiseClassifierPackage : ReactPackage {
     return listOf(
       WastewiseClassifierModule(reactContext),
       WastewiseLlamaModule(reactContext),
+      WastewiseTranslationModule(reactContext),
     )
   }
 

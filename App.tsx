@@ -17,6 +17,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "./components/Header";
 import BinCollection from "./components/BinCollection";
+import LanguageSelector from "./components/LanguageSelector";
 import RecyclingFinder from "./components/RecyclingFinder";
 import ScanHistory from "./components/ScanHistory";
 import * as ImagePicker from "expo-image-picker";
@@ -32,6 +33,14 @@ import {
 } from "./services/disposalPolicy";
 import { explainVerifiedFacts } from "./services/wastewiseLlama";
 import { saveScan } from "./services/scanHistory";
+import {
+  availableLanguages,
+  languageName,
+  loadSelectedLanguage,
+  saveSelectedLanguage,
+  translateEnglish,
+  type LanguageOption,
+} from "./services/translation";
 import {
   repeatSpeech,
   setVoiceGuidanceEnabled,
@@ -119,6 +128,14 @@ export default function App() {
   const [processingStep, setProcessingStep] = useState(0);
   const [hasSavedCurrentResult, setHasSavedCurrentResult] = useState(false);
   const [voiceGuidanceEnabled, setVoiceGuidanceEnabledState] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState("en");
+  const [availableLanguageOptions, setAvailableLanguageOptions] = useState<LanguageOption[]>([
+    { code: "en", name: "English" },
+  ]);
+  const [languagePickerVisible, setLanguagePickerVisible] = useState(false);
+  const [translatedSteps, setTranslatedSteps] = useState<string[] | null>(null);
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [translationError, setTranslationError] = useState<string | null>(null);
   const processingPulse = useRef(new Animated.Value(0)).current;
   const analysisRequestId = useRef(0);
 
@@ -158,6 +175,31 @@ export default function App() {
       processingPulse.setValue(0);
     };
   }, [processingPulse, screen]);
+
+  useEffect(() => {
+    let active = true;
+    const loadLanguagePreferences = async () => {
+      try {
+        const [savedLanguage, supportedLanguages] = await Promise.all([
+          loadSelectedLanguage(),
+          availableLanguages(),
+        ]);
+        if (!active) return;
+        setAvailableLanguageOptions(supportedLanguages);
+        if (supportedLanguages.some((language) => language.code === savedLanguage)) {
+          setSelectedLanguage(savedLanguage);
+        } else {
+          setSelectedLanguage("en");
+        }
+      } catch {
+        // English remains available even if the optional native translator fails.
+      }
+    };
+    void loadLanguagePreferences();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (screen !== "analysing") return;
@@ -335,6 +377,46 @@ export default function App() {
         .split("\n")
         .map((step) => step.trim())
         .filter(Boolean);
+  const englishGuidanceText = resultSteps.join("\n");
+  const displaySteps = translatedSteps ?? resultSteps;
+  const hasGuidance = guidance !== null;
+
+  useEffect(() => {
+    let active = true;
+
+    if (screen !== "result" || !hasGuidance || selectedLanguage === "en") {
+      setTranslatedSteps(null);
+      setIsTranslating(false);
+      setTranslationError(null);
+      return () => {
+        active = false;
+      };
+    }
+
+    const translateGuidance = async () => {
+      setIsTranslating(true);
+      setTranslationError(null);
+      setTranslatedSteps(null);
+      try {
+        const translated = [] as string[];
+        for (const step of resultSteps) {
+          translated.push(await translateEnglish(step, selectedLanguage));
+        }
+        if (active) setTranslatedSteps(translated);
+      } catch {
+        if (active) {
+          setTranslationError("Translation could not load. Showing English guidance.");
+        }
+      } finally {
+        if (active) setIsTranslating(false);
+      }
+    };
+
+    void translateGuidance();
+    return () => {
+      active = false;
+    };
+  }, [englishGuidanceText, hasGuidance, screen, selectedLanguage]);
   const spokenResult = isLowConfidence
     ? `Let's try that again. ${RETAKE_MESSAGE}`
     : `${item.category}. ${resultSteps.join(". ")}`;
@@ -410,6 +492,17 @@ export default function App() {
         onOpenGuide={openGuide}
         voiceGuidanceEnabled={voiceGuidanceEnabled}
         onToggleVoiceGuidance={toggleVoiceGuidance}
+      />
+      <LanguageSelector
+        visible={languagePickerVisible}
+        selectedLanguage={selectedLanguage}
+        languages={availableLanguageOptions}
+        onClose={() => setLanguagePickerVisible(false)}
+        onSelect={(language) => {
+          setSelectedLanguage(language);
+          setLanguagePickerVisible(false);
+          void saveSelectedLanguage(language);
+        }}
       />
 
       {screen === "finder" && (
@@ -879,11 +972,34 @@ export default function App() {
             </View>
           ) : guidance ? (
             <View className="mt-5">
-              <Text className="text-[11px] font-extrabold tracking-[1.2px] text-forest-muted">
-                YOUR NEXT STEPS
-              </Text>
+              <View className="flex-row items-center justify-between">
+                <Text className="text-[11px] font-extrabold tracking-[1.2px] text-forest-muted">
+                  YOUR NEXT STEPS
+                </Text>
+                <Pressable
+                  onPress={() => setLanguagePickerVisible(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Change guidance language, currently ${languageName(selectedLanguage)}`}
+                  className="flex-row items-center rounded-full bg-sage px-3 py-2 active:opacity-70"
+                >
+                  <Feather name="globe" size={14} color="#244A3C" />
+                  <Text className="ml-1.5 text-xs font-extrabold text-forest">
+                    {languageName(selectedLanguage)}
+                  </Text>
+                </Pressable>
+              </View>
+              {isTranslating && (
+                <Text accessibilityLiveRegion="polite" className="mt-3 text-sm font-semibold text-forest-muted">
+                  Downloading language support and translating guidance…
+                </Text>
+              )}
+              {translationError && (
+                <Text accessibilityLiveRegion="polite" className="mt-3 text-sm font-semibold text-[#B86635]">
+                  {translationError}
+                </Text>
+              )}
               <View className="mt-3 gap-3">
-                {resultSteps.map((step, index) => (
+                {displaySteps.map((step, index) => (
                   <View
                     key={`${index}-${step}`}
                     className="flex-row rounded-[20px] border border-[#E2E9E1] bg-white p-4"
