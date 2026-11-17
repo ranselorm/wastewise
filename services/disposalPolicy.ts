@@ -74,18 +74,28 @@ const guidanceByCategory: Record<WasteCategory, DisposalGuidance> = {
   },
 };
 
-export const MIN_CONFIDENCE = 0.6;
-// E-waste has the smallest training set. If it is the model's top category we
-// allow a slightly lower score, rather than rejecting clearly electrical items
-// such as chargers and cables. Other categories keep the stricter threshold.
-export const E_WASTE_MIN_CONFIDENCE = 0.4;
+// A classifier always returns its nearest known category. These gates make the
+// app ask for another photo instead of confidently guessing for unfamiliar or
+// visually ambiguous objects, such as books and packaging.
+export const MIN_CONFIDENCE = 0.65;
+export const E_WASTE_MIN_CONFIDENCE = 0.65;
+export const BATTERY_MIN_CONFIDENCE = 0.7;
+export const MIN_CONFIDENCE_MARGIN = 0.15;
 export const RETAKE_MESSAGE = "Please retake the photo so I can identify the item clearly.";
 
 export function guidanceForClassification(
   category: WasteCategory,
   confidence: number,
+  runnerUpConfidence = 0,
 ): DisposalGuidance | null {
   const threshold =
-    category === "e-waste" ? E_WASTE_MIN_CONFIDENCE : MIN_CONFIDENCE;
-  return confidence >= threshold ? guidanceByCategory[category] : null;
+    category === "battery"
+      ? BATTERY_MIN_CONFIDENCE
+      : category === "e-waste"
+        ? E_WASTE_MIN_CONFIDENCE
+        : MIN_CONFIDENCE;
+  const hasClearLead = confidence - runnerUpConfidence >= MIN_CONFIDENCE_MARGIN;
+  return confidence >= threshold && hasClearLead
+    ? guidanceByCategory[category]
+    : null;
 }

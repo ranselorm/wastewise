@@ -66,14 +66,20 @@ class WastewiseClassifierModule(
 
       // 3. Pick the largest score as the category and turn all raw scores into
       // a 0–1 probability distribution so the app can apply its confidence gate.
-      val bestIndex = scores.indices.maxBy { scores[it] }
-      val confidence = softmax(scores)[bestIndex]
+      val rankedIndexes = scores.indices.sortedByDescending { scores[it] }
+      val bestIndex = rankedIndexes.first()
+      val probabilities = softmax(scores)
+      val confidence = probabilities[bestIndex]
+      val runnerUpIndex = rankedIndexes.getOrElse(1) { bestIndex }
+      val runnerUpConfidence = probabilities[runnerUpIndex]
 
       // 4. Return only the classification result to TypeScript. The app—not
       // this model—decides whether the confidence is high enough to continue.
       val result = Arguments.createMap().apply {
         putString("category", classNames[bestIndex])
         putDouble("confidence", confidence.toDouble())
+        putString("runnerUpCategory", classNames[runnerUpIndex])
+        putDouble("runnerUpConfidence", runnerUpConfidence.toDouble())
       }
 
       promise.resolve(result)

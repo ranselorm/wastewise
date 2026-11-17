@@ -14,6 +14,8 @@ export type WasteCategory =
 export type ClassificationResult = {
   category: WasteCategory;
   confidence: number;
+  runnerUpCategory?: WasteCategory;
+  runnerUpConfidence?: number;
 };
 
 type WastewiseClassifierNativeModule = {

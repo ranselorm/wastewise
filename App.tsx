@@ -235,6 +235,7 @@ export default function App() {
         const selectedGuidance = guidanceForClassification(
           classification.category,
           classification.confidence,
+          classification.runnerUpConfidence,
         );
 
         if (!stillOnThisScreen) return;
