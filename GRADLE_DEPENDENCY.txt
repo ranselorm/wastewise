@@ -1,0 +1,2 @@
+Add inside LlamaDemo/app/build.gradle dependencies block:
+implementation 'com.google.mlkit:translate:17.0.3'
