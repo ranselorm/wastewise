@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "./components/Header";
+import BinCollection from "./components/BinCollection";
 import RecyclingFinder from "./components/RecyclingFinder";
 import ScanHistory from "./components/ScanHistory";
 import * as ImagePicker from "expo-image-picker";
@@ -47,7 +48,8 @@ type Screen =
   | "analysing"
   | "result"
   | "finder"
-  | "history";
+  | "history"
+  | "binCollection";
 type ImageSource = "camera" | "gallery" | null;
 
 type Item = {
@@ -353,7 +355,9 @@ export default function App() {
                   ? spokenResult
                   : screen === "finder"
                     ? "Recycling centre finder. Browse the map or select a recycling centre from the list."
-                    : "Scan history. Review or remove your previous scan results.";
+                    : screen === "binCollection"
+                      ? "Bin collection calendar. Enter your postcode, choose your address, and load the upcoming collections."
+                      : "Scan history. Review or remove your previous scan results.";
 
   const toggleVoiceGuidance = () => {
     const nextEnabled = !voiceGuidanceEnabled;
@@ -414,6 +418,9 @@ export default function App() {
       {screen === "history" && (
         <ScanHistory onClose={() => setScreen("home")} />
       )}
+      {screen === "binCollection" && (
+        <BinCollection onClose={() => setScreen("home")} />
+      )}
 
       {screen === "home" && (
         <View className="flex-1">
@@ -459,6 +466,17 @@ export default function App() {
               <Feather name="clock" size={19} color="#244A3C" />
               <Text className="text-base font-extrabold text-forest">
                 {"  View scan history"}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setScreen("binCollection")}
+              accessibilityRole="button"
+              accessibilityLabel="Check bin collection dates"
+              className="mt-3 flex-row items-center justify-center rounded-[18px] border border-[#C9D5CA] bg-white py-[15px] active:bg-sage"
+            >
+              <Feather name="calendar" size={19} color="#244A3C" />
+              <Text className="text-base font-extrabold text-forest">
+                {"  Bin collection dates"}
               </Text>
             </Pressable>
           </View>
