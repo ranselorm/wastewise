@@ -25,6 +25,7 @@ import {
   type RecyclingCentre,
 } from "../services/offlineRecyclingCentres";
 import { getRoutePreview, type RoutePreview } from "../services/routing";
+import AppText from "./AppText";
 
 const cambridgeRegion: Region = { latitude: 52.2053, longitude: 0.1218, latitudeDelta: 0.42, longitudeDelta: 0.42 };
 
@@ -155,8 +156,8 @@ export default function RecyclingFinder({ onClose }: { onClose: () => void }) {
     <View className="flex-1 pt-5">
       <View className="mb-4 flex-row items-center justify-between">
         <View className="flex-1 pr-4">
-          <Text className="text-[11px] font-extrabold tracking-[1.4px] text-forest-muted">LIVE LOCAL FINDER</Text>
-          <Text className="mt-2 text-[29px] font-extrabold tracking-tight text-ink">Recycling centres near you</Text>
+          <AppText className="text-[11px] font-extrabold tracking-[1.4px] text-forest-muted">LIVE LOCAL FINDER</AppText>
+          <AppText className="mt-2 text-[29px] font-extrabold tracking-tight text-ink">Recycling centres near you</AppText>
         </View>
         <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Back to your recycling result" className="h-11 w-11 items-center justify-center rounded-full bg-sage">
           <Feather name="x" size={21} color="#244A3C" />
@@ -166,12 +167,12 @@ export default function RecyclingFinder({ onClose }: { onClose: () => void }) {
         {isOffline ? (
           <View style={styles.offlineMap}>
             <Feather name="map" size={28} color="#244A3C" />
-            <Text className="mt-3 text-center text-[16px] font-extrabold text-ink">
+            <AppText className="mt-3 text-center text-[16px] font-extrabold text-ink">
               Saved centres are available below
-            </Text>
-            <Text className="mt-2 px-8 text-center text-sm leading-5 text-copy">
+            </AppText>
+            <AppText className="mt-2 px-8 text-center text-sm leading-5 text-copy">
               Connect to the internet to load the live map and directions.
-            </Text>
+            </AppText>
           </View>
         ) : (
           <MapView ref={mapRef} provider={PROVIDER_GOOGLE} initialRegion={cambridgeRegion} style={styles.map} showsUserLocation={userLocation !== null} showsMyLocationButton accessibilityLabel="Map of nearby recycling centres">
@@ -257,7 +258,7 @@ export default function RecyclingFinder({ onClose }: { onClose: () => void }) {
         </View>
       )}
       <ScrollView className="mt-4" showsVerticalScrollIndicator={false}>
-        <Text className="mb-2 text-[11px] font-extrabold tracking-[1.2px] text-forest-muted">CAMBRIDGE-AREA CENTRES</Text>
+        <AppText className="mb-2 text-[11px] font-extrabold tracking-[1.2px] text-forest-muted">CAMBRIDGE-AREA CENTRES</AppText>
         {sortedCentres.map((centre) => (
           <Pressable key={centre.id} onPress={() => selectCentre(centre)} accessibilityRole="button" accessibilityLabel={`Select ${centre.name} for directions`} className="mb-3 flex-row items-center rounded-[20px] border border-[#E2E9E1] bg-white p-4 active:bg-sage">
             <View className="h-10 w-10 items-center justify-center rounded-[14px] bg-card"><Feather name="map-pin" size={19} color="#244A3C" /></View>
@@ -265,7 +266,7 @@ export default function RecyclingFinder({ onClose }: { onClose: () => void }) {
             <Feather name="chevron-right" size={20} color="#627A6D" />
           </Pressable>
         ))}
-        <Text className="mb-5 px-1 text-xs leading-4 text-footer">Check accepted materials and opening hours before travelling.</Text>
+        <AppText className="mb-5 px-1 text-xs leading-4 text-footer">Check accepted materials and opening hours before travelling.</AppText>
       </ScrollView>
     </View>
   );

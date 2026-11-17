@@ -1,6 +1,7 @@
 import Feather from "@expo/vector-icons/Feather";
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 import type { LanguageOption } from "../services/translation";
+import AppText from "./AppText";
 
 type LanguageSelectorProps = {
   visible: boolean;
@@ -23,14 +24,14 @@ export default function LanguageSelector({
         <View className="max-h-[78%] rounded-t-[28px] bg-canvas px-6 pb-8 pt-5">
           <View className="flex-row items-center justify-between">
             <View>
-              <Text className="text-[11px] font-extrabold tracking-[1.2px] text-forest-muted">LANGUAGE</Text>
-              <Text className="mt-1 text-[25px] font-extrabold text-ink">Read guidance your way</Text>
+              <AppText className="text-[11px] font-extrabold tracking-[1.2px] text-forest-muted">LANGUAGE</AppText>
+              <AppText className="mt-1 text-[25px] font-extrabold text-ink">Choose your app language</AppText>
             </View>
             <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close language selection" className="h-10 w-10 items-center justify-center rounded-full bg-sage">
               <Feather name="x" size={20} color="#244A3C" />
             </Pressable>
           </View>
-          <Text className="mt-3 text-sm leading-5 text-copy">The first translation may download language support. After it downloads, it can work offline.</Text>
+          <AppText className="mt-3 text-sm leading-5 text-copy">The first translation may download language support. After it downloads, it can work offline.</AppText>
           <ScrollView className="mt-5" showsVerticalScrollIndicator={false}>
             {languages.map((language) => {
               const active = language.code === selectedLanguage;

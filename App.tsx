@@ -17,6 +17,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "./components/Header";
 import BinCollection from "./components/BinCollection";
+import AppText from "./components/AppText";
 import LanguageSelector from "./components/LanguageSelector";
 import RecyclingFinder from "./components/RecyclingFinder";
 import ScanHistory from "./components/ScanHistory";
@@ -47,6 +48,7 @@ import {
   speak,
   stopSpeech,
 } from "./services/speechService";
+import { AppLanguageProvider } from "./services/appLanguage";
 
 type Screen =
   | "home"
@@ -488,12 +490,14 @@ export default function App() {
 
   return (
     <SafeAreaView className="flex-1 bg-canvas px-6" edges={["top", "bottom"]}>
-      <StatusBar style="dark" />
-      <Header
+      <AppLanguageProvider language={selectedLanguage}>
+        <StatusBar style="dark" />
+        <Header
         onOpenGuide={openGuide}
+        onOpenLanguage={() => setLanguagePickerVisible(true)}
         voiceGuidanceEnabled={voiceGuidanceEnabled}
         onToggleVoiceGuidance={toggleVoiceGuidance}
-      />
+        />
       <LanguageSelector
         visible={languagePickerVisible}
         selectedLanguage={selectedLanguage}
@@ -521,17 +525,12 @@ export default function App() {
           <View className="pt-[68px]">
             <View className="flex-row items-center gap-2">
               <View className="h-2 w-2 rounded-full bg-peach" />
-              <Text className="text-[11px] font-extrabold tracking-[1.4px] text-forest-muted">
+              <AppText className="text-[11px] font-extrabold tracking-[1.4px] text-forest-muted">
                 SORT SMARTER
-              </Text>
+              </AppText>
             </View>
-            <Text className="mt-5 text-[43px] font-extrabold leading-[48px] tracking-[-1.8px] text-ink">
-              Not sure where{"\n"}it belongs?
-            </Text>
-            <Text className="mt-[18px] max-w-[330px] text-base leading-6 text-copy">
-              Scan everyday waste and get clear, practical guidance before it
-              reaches the bin.
-            </Text>
+            <AppText className="mt-5 text-[43px] font-extrabold leading-[48px] tracking-[-1.8px] text-ink">Not sure where it belongs?</AppText>
+            <AppText className="mt-[18px] max-w-[330px] text-base leading-6 text-copy">Scan everyday waste and get clear, practical guidance before it reaches the bin.</AppText>
 
             {/* scan an item from camera */}
             <Pressable
@@ -539,9 +538,7 @@ export default function App() {
               className="mt-[31px] flex-row items-center justify-center rounded-[18px] bg-ink py-[17px] active:opacity-85"
             >
               <Feather name="camera" size={20} color="#B7D9A8" />
-              <Text className="text-base font-extrabold text-white">
-                {"  Scan an item"}
-              </Text>
+              <AppText className="text-base font-extrabold text-white">  Scan an item</AppText>
             </Pressable>
 
             <Pressable
@@ -549,18 +546,14 @@ export default function App() {
               className="mt-3 flex-row items-center justify-center rounded-[18px] border border-[#C9D5CA] bg-white py-[17px] active:bg-sage"
             >
               <Feather name="image" size={20} color="#244A3C" />
-              <Text className="text-base font-extrabold text-forest">
-                {"  Choose from gallery"}
-              </Text>
+              <AppText className="text-base font-extrabold text-forest">  Choose from gallery</AppText>
             </Pressable>
             <Pressable
               onPress={() => setScreen("history")}
               className="mt-3 flex-row items-center justify-center rounded-[18px] border border-[#C9D5CA] bg-white py-[15px] active:bg-sage"
             >
               <Feather name="clock" size={19} color="#244A3C" />
-              <Text className="text-base font-extrabold text-forest">
-                {"  View scan history"}
-              </Text>
+              <AppText className="text-base font-extrabold text-forest">  View scan history</AppText>
             </Pressable>
             <Pressable
               onPress={() => setScreen("binCollection")}
@@ -569,30 +562,25 @@ export default function App() {
               className="mt-3 flex-row items-center justify-center rounded-[18px] border border-[#C9D5CA] bg-white py-[15px] active:bg-sage"
             >
               <Feather name="calendar" size={19} color="#244A3C" />
-              <Text className="text-base font-extrabold text-forest">
-                {"  Bin collection dates"}
-              </Text>
+              <AppText className="text-base font-extrabold text-forest">  Bin collection dates</AppText>
             </Pressable>
           </View>
 
           <View className="mt-9 rounded-[22px] bg-card p-[22px]">
             <View className="flex-row items-center justify-between">
-              <Text className="text-[10px] font-extrabold tracking-[1.3px] text-card-label">
+              <AppText className="text-[10px] font-extrabold tracking-[1.3px] text-card-label">
                 TODAY'S TIP
-              </Text>
+              </AppText>
               <Feather name="arrow-up-right" size={20} color="#244A3C" />
             </View>
-            <Text className="mt-[18px] text-[21px] font-extrabold tracking-tight text-card-ink">
+            <AppText className="mt-[18px] text-[21px] font-extrabold tracking-tight text-card-ink">
               Keep recycling clean.
-            </Text>
-            <Text className="mt-2 text-sm leading-5 text-card-copy">
-              Give food containers a quick rinse so they can be recycled
-              properly.
-            </Text>
+            </AppText>
+            <AppText className="mt-2 text-sm leading-5 text-card-copy">Give food containers a quick rinse so they can be recycled properly.</AppText>
           </View>
-          <Text className="mt-auto pb-[18px] text-center text-xs font-semibold text-footer">
+          <AppText className="mt-auto pb-[18px] text-center text-xs font-semibold text-footer">
             On-device guidance. Thoughtful choices.
-          </Text>
+          </AppText>
         </View>
       )}
 
@@ -1121,6 +1109,7 @@ export default function App() {
           </Pressable>
         </ScrollView>
       )}
+      </AppLanguageProvider>
     </SafeAreaView>
   );
 }
