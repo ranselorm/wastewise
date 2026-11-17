@@ -1,0 +1,288 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { Button, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import * as Location from 'expo-location';
+import OfflineCambridgeMap from './OfflineCambridgeMap';
+import { cambridge, distanceKm, locations } from './locations';
+import { travelModes, type TravelMode } from './travelModes';
+import type { Category, Coordinate, RecyclingLocation } from './locations';
+
+type Route = { mode?: TravelMode; points: Coordinate[]; steps: string[]; distanceMetres: number; seconds: number };
+type RoutePreview = Route & { startLabel: string; destinationName: string };
+
+type Props = {
+  category: Category;
+  routesUrl?: string;
+  getRouteHeaders?: () => Promise<Record<string, string>>;
+};
+
+export default function RecyclingFinder({ category, routesUrl, getRouteHeaders }: Props) {
+  const map = useRef<MapView>(null);
+  const request = useRef<AbortController | null>(null);
+  const [position, setPosition] = useState<Coordinate>();
+  const [hasPermission, setHasPermission] = useState(false);
+  const [offline, setOffline] = useState(false);
+  const [aroundCambridge, setAroundCambridge] = useState(false);
+  const [selected, setSelected] = useState<RecyclingLocation>();
+  const [mode, setMode] = useState<TravelMode>('DRIVE');
+  const [route, setRoute] = useState<RoutePreview>();
+  const [routing, setRouting] = useState(false);
+  const [error, setError] = useState('');
+  const [locationMessage, setLocationMessage] = useState('Finding your location… You can browse Cambridge now.');
+
+  useEffect(() => {
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    async function locate() {
+      try {
+        const permission = await Location.requestForegroundPermissionsAsync();
+        if (!active) return;
+        if (!permission.granted) {
+          setLocationMessage('Location permission declined. Showing sites around Cambridge.');
+          return;
+        }
+        setHasPermission(true);
+        const fix = await Promise.race([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new Error('Location timed out')), 12000);
+          }),
+        ]);
+        if (!active) return;
+        if (fix.coords.accuracy == null || fix.coords.accuracy > 100) {
+          setLocationMessage('Location is too approximate for routing. Showing sites around Cambridge.');
+          return;
+        }
+        setPosition({ latitude: fix.coords.latitude, longitude: fix.coords.longitude });
+        setLocationMessage('');
+      } catch {
+        if (active) setLocationMessage('Location unavailable. Showing sites around Cambridge.');
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    }
+    void locate();
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+      request.current?.abort();
+      request.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    request.current?.abort();
+    request.current = null;
+    setSelected(undefined);
+    setRoute(undefined);
+    setError('');
+    setRouting(false);
+  }, [category]);
+
+  const origin = (!offline && !aroundCambridge && position) || cambridge;
+  const matches = locations.filter(site => Boolean(site.materials[category]))
+    .sort((a, b) => distanceKm(origin, a.coordinate) - distanceKm(origin, b.coordinate));
+  const site = selected && selected.materials[category] ? selected : undefined;
+
+  function focusSites() {
+    const points = [origin, ...matches.map(match => match.coordinate)];
+    if (points.length === 1) {
+      map.current?.animateToRegion({ ...origin, latitudeDelta: 0.14, longitudeDelta: 0.18 });
+    } else {
+      map.current?.fitToCoordinates(points, {
+        edgePadding: { top: 45, right: 45, bottom: 45, left: 45 }, animated: true,
+      });
+    }
+  }
+
+  function resetRoute() {
+    request.current?.abort();
+    request.current = null;
+    setRoute(undefined);
+    setError('');
+    setRouting(false);
+  }
+
+  function selectSite(destination: RecyclingLocation) {
+    resetRoute();
+    setSelected(destination);
+  }
+
+  async function showDirections(destination: RecyclingLocation) {
+    if (!routesUrl || !routesUrl.startsWith('https://')) {
+      setError('Directions require a configured HTTPS route service.');
+      return;
+    }
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
+    setRouting(true);
+    setError('');
+    setRoute(undefined);
+    const timer = setTimeout(() => controller.abort(), 15000);
+    try {
+      const headers = await getRouteHeaders?.();
+      const response = await fetch(routesUrl, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ origin, destinationId: destination.id, mode }),
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error('Route unavailable');
+      const result: Route = await response.json();
+      if (!Array.isArray(result.points) || result.points.length < 2 ||
+          !Array.isArray(result.steps) || !Number.isFinite(result.distanceMetres) ||
+          !Number.isFinite(result.seconds)) throw new Error('Invalid route');
+      if (request.current !== controller) return;
+      // Older endpoints default to driving and return no mode.
+      if ((result.mode ?? 'DRIVE') !== mode) {
+        setError('This route service does not support the selected travel mode yet.');
+        return;
+      }
+      setRoute({
+        ...result,
+        startLabel: position && !aroundCambridge ? 'Your location' : 'Central Cambridge',
+        destinationName: destination.name,
+      });
+      map.current?.fitToCoordinates(result.points, {
+        edgePadding: { top: 48, right: 48, bottom: 48, left: 48 }, animated: true,
+      });
+    } catch {
+      if (request.current === controller) {
+        setError('Directions are unavailable. Check your connection and try again.');
+      }
+    } finally {
+      clearTimeout(timer);
+      if (request.current === controller) {
+        request.current = null;
+        setRouting(false);
+      }
+    }
+  }
+
+  return (
+    <View style={styles.screen}>
+      <Text style={styles.notice}>Check accepted materials and opening hours before travelling.</Text>
+      <Button title={offline ? 'Switch to online map' : 'Switch to offline map'} onPress={() => {
+        resetRoute();
+        setOffline(!offline);
+      }} />
+      {!offline && locationMessage ? <Text style={styles.notice}>{locationMessage}</Text> : null}
+      {!offline && <Button title={position && !aroundCambridge ? 'Search around Cambridge' :
+        position ? 'Search near me' : 'Show Cambridge sites'} onPress={() => {
+        if (position) {
+          resetRoute();
+          const next = !aroundCambridge;
+          setAroundCambridge(next);
+          map.current?.animateToRegion({
+            ...(next ? cambridge : position), latitudeDelta: 0.35, longitudeDelta: 0.45,
+          });
+        } else {
+          focusSites();
+        }
+      }} />}
+      {offline ? <OfflineCambridgeMap sites={matches} selectedId={site?.id} onSelect={selectSite} /> : <MapView ref={map} style={styles.map} provider={PROVIDER_GOOGLE}
+        toolbarEnabled={false}
+        showsUserLocation={hasPermission}
+        initialRegion={{ ...cambridge, latitudeDelta: 0.35, longitudeDelta: 0.45 }}
+        onMapReady={focusSites}>
+        {matches.filter(match => !route || match.id !== site?.id).map(match => <Marker key={match.id} coordinate={match.coordinate}
+          accessibilityLabel={match.name} onPress={() => selectSite(match)} />)}
+        {route && <>
+          <Polyline coordinates={route.points} strokeColor="#146cbb" strokeWidth={5} />
+          <Marker coordinate={route.points[0]} title={route.startLabel}
+            accessibilityLabel={`A. ${route.startLabel}`} anchor={{ x: 0.5, y: 0.5 }}>
+            <View style={styles.routePin}><Text style={styles.routePinLabel}>A</Text></View>
+          </Marker>
+          <Marker coordinate={route.points[route.points.length - 1]} title={route.destinationName}
+            accessibilityLabel={`B. ${route.destinationName}`} anchor={{ x: 0.5, y: 0.5 }}>
+            <View style={[styles.routePin, styles.destinationPin]}><Text style={styles.routePinLabel}>B</Text></View>
+          </Marker>
+        </>}
+      </MapView>}
+      <View style={styles.sheet}>
+        <ScrollView contentContainerStyle={styles.details}>
+          {site ? <>
+            <Text style={styles.title}>{site.name}</Text>
+            <Text>{site.address}</Text>
+            <Text>Accepted materials for this category · {site.materials[category]}</Text>
+            <Text>{site.hours}</Text>
+            <Text>Household waste only. Pins indicate approximate site locations.</Text>
+            <Text>Sources reviewed {site.reviewed}</Text>
+            {!offline && <>
+              <Text style={styles.title}>Travel mode</Text>
+              <View style={styles.travelModes}>
+                {travelModes.map(option => (
+                  <Pressable key={option.mode} accessibilityRole="button"
+                    accessibilityState={{ selected: mode === option.mode }}
+                    style={[styles.modeButton, mode === option.mode && styles.activeMode]}
+                    onPress={() => {
+                      if (mode === option.mode) return;
+                      resetRoute();
+                      setMode(option.mode);
+                    }}>
+                    <Text style={mode === option.mode ? styles.activeModeText : undefined}>{option.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              {mode !== 'DRIVE' && (
+                <Text>Walking and cycling routes are in beta and may be missing sidewalks, pedestrian paths or cycle paths. Check the centre's access rules before travelling.</Text>
+              )}
+              <Button title={routing ? 'Getting directions…' :
+                position && !aroundCambridge ? 'Preview route from my location' :
+                  'Preview route from central Cambridge'}
+                disabled={routing} onPress={() => void showDirections(site)} />
+            </>}
+            {error ? <Text accessibilityLiveRegion="polite">{error}</Text> : null}
+            {route && <>
+              <Text style={styles.title}>Route overview</Text>
+              <Text>A · {route.startLabel}</Text>
+              <Text>B · {route.destinationName}</Text>
+              <Text style={styles.title}>
+                {(route.distanceMetres / 1000).toFixed(1)} km · {Math.ceil(route.seconds / 60)} min
+              </Text>
+              {route.steps.map((step, index) => <Text key={index}>{index + 1}. {step}</Text>)}
+            </>}
+          </> : <>
+            <Text style={styles.title}>Recycling locations</Text>
+            {matches.length === 0
+              ? <Text>No verified sites in this list for this category. Check the item-specific disposal advice.</Text>
+              : matches.map((match, index) => <Button key={match.id}
+                title={(offline ? (index + 1) + '. ' : '') + match.name + ' · ' + distanceKm(origin, match.coordinate).toFixed(1) + ' km away'}
+                onPress={() => {
+                  selectSite(match);
+                  map.current?.animateToRegion({
+                    ...match.coordinate, latitudeDelta: 0.025, longitudeDelta: 0.025,
+                  });
+                }} />)}
+          </>}
+        </ScrollView>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: '#fff' },
+  map: { flex: 1, minHeight: 120 },
+  notice: { padding: 8, color: '#143b2c' },
+  sheet: { maxHeight: '45%', backgroundColor: '#fff', borderTopLeftRadius: 18, borderTopRightRadius: 18, elevation: 5 },
+  details: { padding: 16, gap: 8 },
+  routePin: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#fff',
+    backgroundColor: '#165497',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  destinationPin: { backgroundColor: '#14634a' },
+  routePinLabel: { fontWeight: '700', color: '#fff' },
+  travelModes: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  modeButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 14, borderRadius: 8, backgroundColor: '#e6f1e8' },
+  activeMode: { backgroundColor: '#14634a' },
+  activeModeText: { color: '#fff', fontWeight: '700' },
+  title: { fontSize: 17, fontWeight: '700' },
+});

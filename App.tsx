@@ -15,15 +15,34 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "./components/Header";
+import RecyclingFinder from "./src/features/recycling/RecyclingFinder";
+import type { Category } from "./src/features/recycling/locations";
+import ScanHistory from "./components/ScanHistory";
 import * as ImagePicker from "expo-image-picker";
 
 import {
   classifyImage,
   type WasteCategory,
 } from "./services/wastewiseClassifier.ts";
+import {
+  guidanceForClassification,
+  MIN_CONFIDENCE,
+  RETAKE_MESSAGE,
+  type DisposalGuidance,
+} from "./services/disposalPolicy";
+import { explainVerifiedFacts } from "./services/wastewiseLlama";
+import { saveScan } from "./services/scanHistory";
 
 type Screen =
-  "home" | "guide" | "camera" | "choose" | "preview" | "analysing" | "result";
+  | "home"
+  | "guide"
+  | "camera"
+  | "choose"
+  | "preview"
+  | "analysing"
+  | "result"
+  | "finder"
+  | "history";
 type ImageSource = "camera" | "gallery" | null;
 
 type Item = {
@@ -31,66 +50,29 @@ type Item = {
   category: string;
   action: string;
 };
-
-const MIN_CONFIDENCE = 0.6;
 const MIN_ANALYSIS_TIME_MS = 1_500;
+
+function guidanceSteps(
+  generated: string | null,
+  verifiedFacts: readonly string[],
+): readonly string[] {
+  if (!generated) return verifiedFacts;
+
+  // Llama is allowed to make the wording warmer, but the app keeps the
+  // approved facts if it does not return one clear line for every fact.
+  const steps = generated
+    .split(/(?:^|\n)\s*\d+[.)]\s*/)
+    .map((step) => step.trim())
+    .filter(Boolean);
+
+  return steps.length === verifiedFacts.length ? steps : verifiedFacts;
+}
 
 const processingMessages = [
   "Getting your photo ready",
   "Looking for useful details",
   "Matching it with waste types",
 ] as const;
-
-const guidanceByCategory: Record<WasteCategory, Item> = {
-  battery: {
-    name: "Battery",
-    category: "Battery collection",
-    action:
-      "Keep batteries out of ordinary recycling. Take them to a battery collection point.",
-  },
-  general_waste: {
-    name: "General waste",
-    category: "General waste",
-    action:
-      "Place this in general waste if it cannot be reused or accepted by your local recycling service.",
-  },
-  glass: {
-    name: "Glass",
-    category: "Glass recycling",
-    action:
-      "Empty and rinse the glass item, then follow your local glass recycling guidance.",
-  },
-  metal: {
-    name: "Metal",
-    category: "Metal recycling",
-    action:
-      "Empty the item and place it in metal recycling where your local service accepts it.",
-  },
-  organic_waste: {
-    name: "Organic waste",
-    category: "Food and organic waste",
-    action:
-      "Place food scraps and other compostable organic material in the appropriate food-waste collection.",
-  },
-  paper_cardboard: {
-    name: "Paper and cardboard",
-    category: "Paper and cardboard",
-    action:
-      "Keep it clean and dry, flatten it if possible, then place it in paper and cardboard recycling.",
-  },
-  plastic: {
-    name: "Plastic",
-    category: "Plastic recycling",
-    action:
-      "Empty and rinse the item, then check whether your local service accepts that type of plastic.",
-  },
-  textile: {
-    name: "Textile",
-    category: "Textile reuse or recycling",
-    action:
-      "If clean and usable, donate it. Otherwise, check for a local textile recycling point.",
-  },
-};
 
 const exampleItems: Item[] = [
   {
@@ -125,7 +107,12 @@ export default function App() {
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
   const [confidence, setConfidence] = useState<number | null>(null);
+  const [detectedMaterial, setDetectedMaterial] = useState<Category | null>(null);
+  const [finderMaterial, setFinderMaterial] = useState<Category | null>(null);
+  const [guidance, setGuidance] = useState<DisposalGuidance | null>(null);
+  const [friendlyGuidance, setFriendlyGuidance] = useState<string | null>(null);
   const [processingStep, setProcessingStep] = useState(0);
+  const [hasSavedCurrentResult, setHasSavedCurrentResult] = useState(false);
   const processingPulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -195,8 +182,34 @@ export default function App() {
 
         if (!stillOnThisScreen) return;
 
-        setItem(guidanceByCategory[classification.category]);
+        const selectedGuidance = guidanceForClassification(
+          classification.category,
+          classification.confidence,
+        );
+
+        // An unclear image ends here. Llama never identifies an item or
+        // invents disposal advice: it only rewrites app-selected facts.
+        let wording: string | null = null;
+        if (selectedGuidance) {
+          try {
+            wording = await explainVerifiedFacts(selectedGuidance.facts);
+          } catch (error) {
+            // The same verified facts remain the one answer if wording cannot
+            // run on a device.
+            console.warn("Llama wording unavailable:", error);
+          }
+        }
+
+        if (!stillOnThisScreen) return;
+        setGuidance(selectedGuidance);
+        setFriendlyGuidance(wording);
+        setItem({
+          name: selectedGuidance?.title ?? classification.category,
+          category: selectedGuidance?.title ?? "We are not sure",
+          action: selectedGuidance?.facts.join("\n") ?? "",
+        });
         setConfidence(classification.confidence);
+        setDetectedMaterial(classification.category);
         setScreen("result");
       } catch (error) {
         console.error("Classification failed:", error);
@@ -234,10 +247,11 @@ export default function App() {
 
     setPhotoUri(photo.uri);
     setImageSource("camera");
-    // The image is captured for real, but its classification remains mocked
-    // until the ExecuTorch model is integrated.
     setItem(exampleItems[0]);
     setConfidence(null);
+    setGuidance(null);
+    setFriendlyGuidance(null);
+    setHasSavedCurrentResult(false);
     setScreen("preview");
   };
 
@@ -269,14 +283,20 @@ export default function App() {
     console.log(result.assets[0].uri, "Selected image object");
     setPhotoUri(result.assets[0].uri);
     setImageSource("gallery");
-    setItem(exampleItems[0]); // Temporary mock classification
+    setItem(exampleItems[0]);
     setConfidence(null);
+    setGuidance(null);
+    setFriendlyGuidance(null);
+    setHasSavedCurrentResult(false);
     setScreen("preview");
   };
 
   const chooseDemoItem = (nextItem: Item) => {
     setPhotoUri(null);
     setItem(nextItem);
+    setGuidance(null);
+    setFriendlyGuidance(null);
+    setHasSavedCurrentResult(false);
     setScreen("analysing");
   };
 
@@ -288,11 +308,107 @@ export default function App() {
   };
 
   const isLowConfidence = confidence !== null && confidence < MIN_CONFIDENCE;
+  const resultSteps = guidance
+    ? guidanceSteps(friendlyGuidance, guidance.facts)
+    : item.action
+        .split("\n")
+        .map((step) => step.trim())
+        .filter(Boolean);
+  useEffect(() => {
+    if (screen !== "result" || isLowConfidence || hasSavedCurrentResult) {
+      return;
+    }
+
+    const saveCompletedScan = async () => {
+      try {
+        await saveScan({
+          category: item.category,
+          confidence,
+          disposalGuidance: resultSteps.join("\n"),
+          imageUri: photoUri,
+        });
+
+        setHasSavedCurrentResult(true);
+      } catch (error) {
+        console.error("Could not save scan history:", error);
+      }
+    };
+
+    void saveCompletedScan();
+  }, [
+    confidence,
+    hasSavedCurrentResult,
+    isLowConfidence,
+    item.category,
+    photoUri,
+    resultSteps,
+    screen,
+  ]);
 
   return (
     <SafeAreaView className="flex-1 bg-canvas px-6" edges={["top", "bottom"]}>
       <StatusBar style="dark" />
       <Header onOpenGuide={openGuide} />
+
+      {screen === "finder" && (
+        <View className="flex-1">
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setScreen("result")}
+            className="py-3"
+          >
+            <Text className="font-bold text-forest">Back to result</Text>
+          </Pressable>
+          {finderMaterial === null ? (
+            <View>
+              <Text className="mb-3 text-lg font-bold text-ink">
+                What material are you recycling?
+              </Text>
+              <Text className="mb-3 text-sm text-copy">
+                Check accepted materials and opening hours before travelling.
+              </Text>
+              <View className="flex-row flex-wrap gap-2">
+                {([
+                  ["battery", "Battery"],
+                  ["general_waste", "General waste"],
+                  ["glass", "Glass"],
+                  ["metal", "Metal"],
+                  ["organic_waste", "Food and organic waste"],
+                  ["paper_cardboard", "Paper and cardboard"],
+                  ["plastic", "Plastic"],
+                  ["textile", "Textile"],
+                ] as const).map(([category, label]) => (
+                  <Pressable
+                    key={category}
+                    accessibilityRole="button"
+                    onPress={() => setFinderMaterial(category)}
+                    className="rounded-xl bg-sage px-3 py-3"
+                  >
+                    <Text className="font-bold text-forest">{label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ) : (
+            <>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setFinderMaterial(null)}
+                className="py-3"
+              >
+                <Text className="font-bold text-forest">Change material</Text>
+              </Pressable>
+              <RecyclingFinder
+                category={finderMaterial}
+                routesUrl={process.env.EXPO_PUBLIC_RECYCLING_ROUTES_URL}
+              />
+            </>
+          )}
+        </View>
+      )}
+      {screen === "history" && (
+        <ScanHistory onClose={() => setScreen("home")} />
+      )}
 
       {screen === "home" && (
         <View className="flex-1">
@@ -329,6 +445,15 @@ export default function App() {
               <Feather name="image" size={20} color="#244A3C" />
               <Text className="text-base font-extrabold text-forest">
                 {"  Choose from gallery"}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setScreen("history")}
+              className="mt-3 flex-row items-center justify-center rounded-[18px] border border-[#C9D5CA] bg-white py-[15px] active:bg-sage"
+            >
+              <Feather name="clock" size={19} color="#244A3C" />
+              <Text className="text-base font-extrabold text-forest">
+                {"  View scan history"}
               </Text>
             </Pressable>
           </View>
@@ -656,7 +781,9 @@ export default function App() {
               <View
                 key={message}
                 className={`h-2 rounded-full ${
-                  index === processingStep ? "w-10 bg-forest" : "w-2 bg-[#DDE5DC]"
+                  index === processingStep
+                    ? "w-10 bg-forest"
+                    : "w-2 bg-[#DDE5DC]"
                 }`}
               />
             ))}
@@ -666,37 +793,97 @@ export default function App() {
 
       {screen === "result" && (
         <View className="flex-1 pt-8">
-          <View className="self-start rounded-full bg-sage px-3 py-2">
-            <View className="flex-row items-center gap-1.5">
-              <Feather name="check-circle" size={14} color="#244A3C" />
-              <Text className="text-[11px] font-extrabold tracking-[.8px] text-forest">
-                RESULT READY
-              </Text>
+          <View className="flex-row items-center justify-between">
+            <View className="self-start rounded-full bg-sage px-3 py-2">
+              <View className="flex-row items-center gap-1.5">
+                <Feather name="check-circle" size={14} color="#244A3C" />
+                <Text className="text-[11px] font-extrabold tracking-[.8px] text-forest">
+                  RESULT READY
+                </Text>
+              </View>
             </View>
+            {!isLowConfidence && confidence !== null && (
+              <View className="rounded-full border border-[#D5E3D5] bg-white px-3 py-2">
+                <Text className="text-[11px] font-extrabold text-forest">
+                  {Math.round(confidence * 100)}% match
+                </Text>
+              </View>
+            )}
           </View>
+
           {photoUri && (
             <Image
               source={{ uri: photoUri }}
-              className="mt-5 h-60 w-300 rounded-[26px]"
+              className="mt-5 h-52 w-full rounded-[26px] bg-sage"
+              resizeMode="cover"
             />
           )}
-          <Text className="mt-6 text-[34px] font-extrabold leading-[39px] tracking-[-1.3px] text-ink">
-            {isLowConfidence ? "We are not sure" : item.category}
+
+          <Text className="mt-5 text-[34px] font-extrabold leading-[39px] tracking-[-1.3px] text-ink">
+            {isLowConfidence ? "Let’s try that again" : item.category}
           </Text>
 
           {confidence !== null && (
-            <Text className="mt-3 text-sm font-bold text-forest-muted">
-              Best match: {item.name} · {Math.round(confidence * 100)}%
-              confidence
+            <Text className="mt-2 text-sm font-medium text-forest-muted">
+              {isLowConfidence
+                ? "The photo was not clear enough to identify safely."
+                : `We found a clear match for ${item.name.toLowerCase()}.`}
             </Text>
           )}
+
           {isLowConfidence ? (
-            <View className="mt-4 rounded-[18px] bg-[#FFF0E6] p-4">
-              <Text className="text-sm leading-5 text-ink">
-                This photo was not clear enough for a confident answer. Try
-                taking another photo with one item, good light, and a simple
-                background.
+            <View className="mt-5 flex-row rounded-[20px] border border-[#F2D7C3] bg-[#FFF6EF] p-5">
+              <View className="mr-3 mt-0.5 h-9 w-9 items-center justify-center rounded-full bg-[#FFF0E6]">
+                <Feather name="camera" size={17} color="#B86635" />
+              </View>
+              <Text className="flex-1 text-[15px] font-semibold leading-6 text-ink">
+                {RETAKE_MESSAGE}
               </Text>
+            </View>
+          ) : guidance ? (
+            <View className="mt-5">
+              <Text className="text-[11px] font-extrabold tracking-[1.2px] text-forest-muted">
+                YOUR NEXT STEPS
+              </Text>
+              <View className="mt-3 gap-3">
+                {resultSteps.map((step, index) => (
+                  <View
+                    key={`${index}-${step}`}
+                    className="flex-row rounded-[20px] border border-[#E2E9E1] bg-white p-4"
+                  >
+                    <View className="mr-3 h-8 w-8 items-center justify-center rounded-full bg-card">
+                      <Text className="text-sm font-extrabold text-forest">
+                        {index + 1}
+                      </Text>
+                    </View>
+                    <Text className="flex-1 pt-1 text-[15px] font-semibold leading-5 text-ink">
+                      {step}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+              <View className="mt-4 flex-row items-center gap-2 px-1">
+                <Feather name="shield" size={15} color="#627A6D" />
+                <Text className="flex-1 text-xs leading-4 text-footer">
+                  Based on verified Cambridge recycling guidance.
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => {
+              setFinderMaterial(photoUri && confidence !== null && !isLowConfidence
+                ? detectedMaterial
+                : null);
+              setScreen("finder");
+            }}
+                accessibilityRole="button"
+                accessibilityLabel="Find a recycling centre near you"
+                className="mt-5 flex-row items-center justify-center rounded-[18px] border border-[#C9D5CA] bg-white py-4 active:bg-sage"
+              >
+                <Feather name="map-pin" size={19} color="#244A3C" />
+                <Text className="text-base font-extrabold text-forest">
+                  {"  Find a recycling centre"}
+                </Text>
+              </Pressable>
             </View>
           ) : (
             <View className="mt-5 rounded-[20px] bg-white p-5">

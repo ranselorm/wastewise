@@ -9,7 +9,10 @@ class WastewiseClassifierPackage : ReactPackage {
   override fun createNativeModules(
     reactContext: ReactApplicationContext,
   ): List<NativeModule> {
-    return listOf(WastewiseClassifierModule(reactContext))
+    return listOf(
+      WastewiseClassifierModule(reactContext),
+      WastewiseLlamaModule(reactContext),
+    )
   }
 
   override fun createViewManagers(
