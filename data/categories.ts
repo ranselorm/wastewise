@@ -10,6 +10,10 @@ export const categoryDetails: Record<WasteCategory, CategoryDetails> = {
     label: "Battery",
     recyclingGroup: "Battery collection",
   },
+  "e-waste": {
+    label: "Electrical item",
+    recyclingGroup: "Electrical recycling",
+  },
   general_waste: {
     label: "General waste",
     recyclingGroup: "General waste",

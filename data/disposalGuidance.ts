@@ -4,6 +4,9 @@ export const disposalGuidance: Record<WasteCategory, string> = {
   battery:
     "Keep batteries out of ordinary recycling. Take them to a battery collection point.",
 
+  "e-waste":
+    "Do not put electrical items in household recycling. Take them to a Household Recycling Centre.",
+
   general_waste:
     "Place this in general waste if it cannot be reused or accepted by your local recycling service.",
 
