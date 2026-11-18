@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: wastewise-routing
+    runtime: docker
+    dockerfilePath: ./server/routing/Dockerfile
+    dockerContext: ./server/routing
+    healthCheckPath: /health
+    envVars:
+      - key: ROUTES_API_KEY
+        sync: false

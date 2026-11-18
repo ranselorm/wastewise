@@ -95,6 +95,11 @@ android {
         versionCode 1
         versionName "1.0.0"
 
+        // Supplied by the build environment; never commit the Maps key.
+        manifestPlaceholders = [
+            GOOGLE_MAPS_API_KEY: System.getenv("GOOGLE_MAPS_API_KEY") ?: ""
+        ]
+
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
     signingConfigs {
@@ -155,8 +160,9 @@ android {
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
-    // Executorch
+    // Runs the bundled image classifier and Llama guidance model on-device.
     implementation("org.pytorch:executorch-android:1.5.1")
+    implementation("com.google.mlkit:translate:17.0.3")
 
     def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true";
     def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true";

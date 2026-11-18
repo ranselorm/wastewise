@@ -3,9 +3,17 @@ import { Pressable, Text, View } from "react-native";
 
 type HeaderProps = {
   onOpenGuide: () => void;
+  onOpenLanguage: () => void;
+  voiceGuidanceEnabled: boolean;
+  onToggleVoiceGuidance: () => void;
 };
 
-export default function Header({ onOpenGuide }: HeaderProps) {
+export default function Header({
+  onOpenGuide,
+  onOpenLanguage,
+  voiceGuidanceEnabled,
+  onToggleVoiceGuidance,
+}: HeaderProps) {
   return (
     <View className="flex-row items-center justify-between pt-3.5">
       <View className="h-10 w-10 items-center justify-center rounded-[13px] bg-forest">
@@ -15,16 +23,39 @@ export default function Header({ onOpenGuide }: HeaderProps) {
         wastewise
       </Text>
       <Pressable
+        onPress={onToggleVoiceGuidance}
+        accessibilityRole="switch"
+        accessibilityState={{ checked: voiceGuidanceEnabled }}
+        accessibilityLabel="Voice guidance"
+        accessibilityHint={
+          voiceGuidanceEnabled
+            ? "Turns off voice guidance"
+            : "Turns on voice guidance"
+        }
+        className="mr-2 h-9 w-9 items-center justify-center rounded-full bg-sage active:opacity-70"
+      >
+        <Feather
+          name={voiceGuidanceEnabled ? "volume-2" : "volume-x"}
+          size={17}
+          color="#244A3C"
+        />
+      </Pressable>
+      <Pressable
+        onPress={onOpenLanguage}
+        accessibilityRole="button"
+        accessibilityLabel="Change app language"
+        accessibilityHint="Choose the language used across Wastewise"
+        className="mr-2 h-9 w-9 items-center justify-center rounded-full bg-sage active:opacity-70"
+      >
+        <Feather name="globe" size={17} color="#244A3C" />
+      </Pressable>
+      <Pressable
         onPress={onOpenGuide}
         accessibilityRole="button"
         accessibilityLabel="Open local guide"
-        className="flex-row items-center gap-1.5 rounded-full bg-sage px-3 py-2 active:opacity-70"
+        className="h-9 w-9 items-center justify-center rounded-full bg-sage active:opacity-70"
       >
-        <Feather name="map-pin" size={12} color="#416053" />
-        <Text className="text-[11px] font-bold text-forest-soft">
-          Local guide
-        </Text>
-        <Feather name="chevron-right" size={13} color="#416053" />
+        <Feather name="map-pin" size={17} color="#416053" />
       </Pressable>
     </View>
   );

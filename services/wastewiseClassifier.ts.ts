@@ -2,6 +2,7 @@ import { NativeModules } from "react-native";
 
 export type WasteCategory =
   | "battery"
+  | "e-waste"
   | "general_waste"
   | "glass"
   | "metal"
@@ -13,6 +14,8 @@ export type WasteCategory =
 export type ClassificationResult = {
   category: WasteCategory;
   confidence: number;
+  runnerUpCategory?: WasteCategory;
+  runnerUpConfidence?: number;
 };
 
 type WastewiseClassifierNativeModule = {
