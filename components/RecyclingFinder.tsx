@@ -26,6 +26,7 @@ import {
 } from "../services/offlineRecyclingCentres";
 import { getRoutePreview, type RoutePreview } from "../services/routing";
 import AppText from "./AppText";
+import OfflineCentreMap from "./OfflineCentreMap";
 
 const cambridgeRegion: Region = { latitude: 52.2053, longitude: 0.1218, latitudeDelta: 0.42, longitudeDelta: 0.42 };
 
@@ -165,15 +166,12 @@ export default function RecyclingFinder({ onClose }: { onClose: () => void }) {
       </View>
       <View className="overflow-hidden rounded-[24px] border border-[#DCE6DC] bg-white">
         {isOffline ? (
-          <View style={styles.offlineMap}>
-            <Feather name="map" size={28} color="#244A3C" />
-            <AppText className="mt-3 text-center text-[16px] font-extrabold text-ink">
-              Saved centres are available below
-            </AppText>
-            <AppText className="mt-2 px-8 text-center text-sm leading-5 text-copy">
-              Connect to the internet to load the live map and directions.
-            </AppText>
-          </View>
+          <OfflineCentreMap
+            centres={centres}
+            selectedCentreId={selectedCentre?.id}
+            userLocation={userLocation}
+            onSelectCentre={selectCentre}
+          />
         ) : (
           <MapView ref={mapRef} provider={PROVIDER_GOOGLE} initialRegion={cambridgeRegion} style={styles.map} showsUserLocation={userLocation !== null} showsMyLocationButton accessibilityLabel="Map of nearby recycling centres">
             {centres
@@ -274,12 +272,6 @@ export default function RecyclingFinder({ onClose }: { onClose: () => void }) {
 
 const styles = StyleSheet.create({
   map: { height: 270, width: "100%" },
-  offlineMap: {
-    alignItems: "center",
-    height: 270,
-    justifyContent: "center",
-    paddingHorizontal: 24,
-  },
   routePin: {
     alignItems: "center",
     backgroundColor: "#146CBB",
